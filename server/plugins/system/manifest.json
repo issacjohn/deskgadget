@@ -1,0 +1,17 @@
+{
+  "id": "system",
+  "name": "System",
+  "version": "1.0.0",
+  "author": "LiquidDeck",
+  "description": "Live CPU, memory, disk and network usage from this PC.",
+  "accent": "#6EE7FF",
+  "interval": 1.0,
+  "default_enabled": true,
+  "settings": {
+    "show_processes": {
+      "type": "boolean",
+      "label": "Show top processes",
+      "default": true
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "id": "news",
+  "name": "News",
+  "version": "1.1.0",
+  "author": "DESKGadget",
+  "description": "Headlines for the region and topics you pick. Tapping one opens it in your PC's browser.",
+  "accent": "#FFB86B",
+  "interval": 300.0,
+  "default_enabled": true,
+  "settings": {
+    "regions": {
+      "type": "multienum",
+      "label": "Regions",
+      "options": [
+        "AR", "AT", "AU", "BE", "BG", "BR", "CA", "CH", "CL", "CN",
+        "CO", "CZ", "DE", "DK", "EG", "ES", "FI", "FR", "GB", "GR",
+        "HK", "HU", "ID", "IE", "IL", "IN", "IT", "JP", "KR", "LT",
+        "LV", "MX", "MY", "NL", "NO", "NZ", "PE", "PH", "PK", "PL",
+        "PT", "RO", "RS", "RU", "SA", "SE", "SG", "SI", "SK", "TH",
+        "TR", "TW", "UA", "US", "VE", "VN", "ZA"
+      ],
+      "default": ["US"]
+    },
+    "topics": {
+      "type": "multienum",
+      "label": "Topics",
+      "options": [
+        "TECH", "BUSINESS", "STOCKS", "WORLD", "NATION", "POLITICS",
+        "SPORTS", "CRICKET", "FOOTBALL", "SCIENCE", "HEALTH",
+        "ENTERTAINMENT", "MOVIES", "MUSIC", "GAMING", "AI",
+        "STARTUPS", "CRYPTO", "CLIMATE", "SPACE", "ELECTIONS"
+      ],
+      "default": ["TECH", "BUSINESS"]
+    },
+    "limit": {
+      "type": "number",
+      "label": "Headlines",
+      "default": 8
+    }
+  }
+}

@@ -1,0 +1,40 @@
+# ---- build output ----------------------------------------------------------
+build/
+dist/
+*.spec
+packaging.log
+build.log
+
+# ---- android ---------------------------------------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+
+# ---- python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- runtime state (pairing tokens, cached icons) --------------------------
+server/data/
+
+# ---- bundled binaries (fetched by packaging/fetch_adb.ps1) -----------------
+packaging/vendor/
+
+# ---- binaries are published as GitHub Releases, not committed --------------
+DESKGadget.exe
+website/assets/*.exe
+website/assets/*.apk
+
+# ---- the marketing site is not part of the public repo --------------------
+website/
+
+# ---- editors / os ----------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

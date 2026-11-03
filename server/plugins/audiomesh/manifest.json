@@ -1,0 +1,27 @@
+{
+  "id": "audiomesh",
+  "name": "AudioMesh",
+  "version": "0.1.0",
+  "author": "Isaac",
+  "description": "See and control AudioMesh routing on this PC.",
+  "accent": "#4C8DFF",
+  "interval": 2.0,
+  "default_enabled": true,
+  "settings": {
+    "app_path": {
+      "type": "string",
+      "label": "AudioMesh.exe path",
+      "default": "C:\\Program Files\\AudioMesh\\AudioMesh.exe"
+    },
+    "api_port": {
+      "type": "number",
+      "label": "Control API port",
+      "default": 47823
+    },
+    "api_token": {
+      "type": "string",
+      "label": "Control API token",
+      "default": ""
+    }
+  }
+}

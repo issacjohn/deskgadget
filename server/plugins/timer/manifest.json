@@ -1,0 +1,17 @@
+{
+  "id": "timer",
+  "name": "Timer",
+  "version": "1.0.0",
+  "author": "DESKGadget",
+  "description": "Countdown or Pomodoro timer, started from the phone.",
+  "accent": "#B69CFF",
+  "interval": 1.0,
+  "default_enabled": true,
+  "settings": {
+    "minutes": {
+      "type": "number",
+      "label": "Length (minutes)",
+      "default": 25
+    }
+  }
+}

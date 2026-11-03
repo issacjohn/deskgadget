@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DESKGadget</title>
+<style>
+  :root{
+    --ink:#EAEFF7; --muted:#8C97AC; --line:rgba(255,255,255,.10);
+    --glass:rgba(255,255,255,.055); --glass-2:rgba(255,255,255,.085);
+    --accent:#7CE7FF;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif;
+    background:#05070C; color:var(--ink); overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- liquid background ---------- */
+  .bg{position:fixed; inset:-20%; z-index:-2; filter:saturate(130%)}
+  .bg span{position:absolute; border-radius:50%; filter:blur(90px); opacity:.55; mix-blend-mode:screen}
+  .b1{width:52vw;height:52vw;left:-6vw;top:-8vw;background:radial-gradient(circle at 30% 30%,#5B4BFF,#2A1E7A 60%,transparent 70%);animation:drift1 26s ease-in-out infinite}
+  .b2{width:46vw;height:46vw;right:-4vw;top:4vw;background:radial-gradient(circle at 60% 40%,#00D6C6,#0B5F6B 60%,transparent 70%);animation:drift2 32s ease-in-out infinite}
+  .b3{width:40vw;height:40vw;left:22vw;bottom:-14vw;background:radial-gradient(circle at 50% 50%,#FF3D8B,#6B1038 60%,transparent 70%);animation:drift3 29s ease-in-out infinite}
+  .b4{width:34vw;height:34vw;right:14vw;bottom:-6vw;background:radial-gradient(circle at 50% 50%,#2C6BFF,#0B2A66 65%,transparent 72%);animation:drift1 35s ease-in-out infinite reverse}
+  @keyframes drift1{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(6vw,4vh,0) scale(1.12)}}
+  @keyframes drift2{0%,100%{transform:translate3d(0,0,0) scale(1.05)}50%{transform:translate3d(-5vw,6vh,0) scale(.94)}}
+  @keyframes drift3{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(4vw,-5vh,0) scale(1.1)}}
+  .vignette{position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 0%,transparent 30%,rgba(3,5,10,.72) 100%)}
+
+  /* ---------- glass primitives ---------- */
+  .glass{
+    position:relative; background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.035));
+    border:1px solid var(--line); border-radius:26px;
+    backdrop-filter:blur(34px) saturate(180%); -webkit-backdrop-filter:blur(34px) saturate(180%);
+    box-shadow:0 24px 60px -28px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.16);
+  }
+  .glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(120deg,rgba(255,255,255,.16),transparent 28%,transparent 72%,rgba(255,255,255,.05));
+    -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+    -webkit-mask-composite:xor;mask-composite:exclude;padding:1px}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 70px}
+  header.top{display:flex;align-items:center;gap:18px;padding:18px 22px;margin-bottom:22px}
+  .logo{width:52px;height:52px;border-radius:17px;display:grid;place-items:center;font-size:24px;
+    background:conic-gradient(from 210deg,#7CE7FF,#B69CFF,#FF7AB6,#7CE7FF);
+    color:#05070C;box-shadow:0 10px 30px -8px rgba(124,231,255,.6)}
+  header.top h1{margin:0;font-size:22px;letter-spacing:.16em;font-weight:650}
+  header.top p{margin:3px 0 0;font-size:12.5px;color:var(--muted);letter-spacing:.02em}
+  .spacer{flex:1}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;
+    font-size:12px;color:#CFE0EF;background:rgba(255,255,255,.06);border:1px solid var(--line)}
+  .dot{width:7px;height:7px;border-radius:50%;background:#5BE49B;box-shadow:0 0 10px #5BE49B}
+  .dot.off{background:#6B7488;box-shadow:none}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  section.card{padding:22px 22px 20px}
+  section.card h2{margin:0 0 4px;font-size:13px;letter-spacing:.18em;color:#A9B8CC;font-weight:600}
+  .hint{font-size:12.5px;color:var(--muted);margin:0 0 16px;line-height:1.5}
+
+  /* ---------- devices ---------- */
+  .device{padding:14px 0;border-top:1px solid var(--line)}
+  .device:first-of-type{border-top:0}
+  .devhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .devname{font-weight:600;font-size:14.5px}
+  .devsub{font-size:11.5px;color:var(--muted)}
+  .modrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;background:rgba(255,255,255,.03);margin-bottom:6px}
+  .modrow .nm{flex:1;font-size:13.5px}
+  .modrow .nm small{display:block;color:var(--muted);font-size:11px}
+  .arrows{display:flex;gap:4px}
+  .arrows button{width:26px;height:26px;border-radius:8px}
+  .modrow.dragging{opacity:.4}
+  .grip{color:var(--faint);cursor:grab;font-size:13px;letter-spacing:-1px;user-select:none}
+  .modrow.drop-before{box-shadow:0 -2px 0 0 #7CE7FF}
+  .modrow.drop-after{box-shadow:0 2px 0 0 #7CE7FF}
+
+  .themerow{display:flex;gap:6px;margin:8px 0 10px;flex-wrap:wrap;align-items:center}
+  .themerow .lbl{font-size:9.5px;letter-spacing:.14em;color:var(--faint);margin-right:2px}  .tbtn{font-size:10.5px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.18s}
+  .tbtn:hover{background:rgba(255,255,255,.1)}
+  .tbtn.on{color:#06121A;background:linear-gradient(135deg,#7CE7FF,#B69CFF);border-color:transparent;font-weight:650}
+
+  /* multi-select dropdown */
+  .ms{position:relative}
+  .ms-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 12px;border-radius:12px;background:rgba(8,12,20,.55);border:1px solid var(--line);
+    color:var(--ink);font-size:13px;text-align:left;cursor:pointer}
+  .ms-btn i{font-style:normal;color:var(--faint);font-size:10px}
+  .ms.open .ms-btn{border-color:rgba(124,231,255,.6);box-shadow:0 0 0 3px rgba(124,231,255,.12)}
+  .ms-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;
+    max-height:230px;overflow:auto;padding:8px;border-radius:14px;
+    background:rgba(12,16,24,.98);border:1px solid var(--line);
+    box-shadow:0 24px 50px -24px #000}
+  .ms.open .ms-menu{display:block}
+  .ms-opt{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;
+    font-size:12.5px;color:var(--ink);cursor:pointer}
+  .ms-opt:hover{background:rgba(255,255,255,.06)}
+  .ms-opt input{accent-color:#7CE7FF;width:14px;height:14px}
+
+  /* ---------- controls ---------- */
+  button{font-family:inherit;cursor:pointer;color:var(--ink);background:rgba(255,255,255,.07);
+    border:1px solid var(--line);border-radius:12px;padding:8px 13px;font-size:12.5px;transition:.18s}
+  button:hover{background:rgba(255,255,255,.13);transform:translateY(-1px)}
+  button.ghost{background:transparent}
+  button.danger{color:#FF8CA8;border-color:rgba(255,90,130,.28)}
+  button.primary{background:linear-gradient(135deg,#7CE7FF,#B69CFF);color:#06121A;font-weight:650;border:none;
+    box-shadow:0 12px 30px -12px rgba(124,231,255,.7)}
+  input[type=text],input[type=number],select{
+    width:100%;padding:10px 12px;border-radius:12px;background:rgba(8,12,20,.55);
+    border:1px solid var(--line);color:var(--ink);font-family:inherit;font-size:13px;outline:none}
+  input:focus,select:focus{border-color:rgba(124,231,255,.6);box-shadow:0 0 0 3px rgba(124,231,255,.12)}
+  label.field{display:block;margin-bottom:12px}
+  label.field>span{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px;letter-spacing:.06em}
+
+  /* toggle */
+  .sw{position:relative;width:44px;height:26px;border-radius:999px;background:rgba(255,255,255,.12);
+      border:1px solid var(--line);flex:0 0 auto;transition:.2s;cursor:pointer}
+  .sw::before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+      background:#C9D4E4;transition:.22s cubic-bezier(.3,1.4,.5,1)}
+  .sw.on{background:linear-gradient(135deg,#5FE0C8,#7CE7FF)}
+  .sw.on::before{left:22px;background:#04121A}
+
+  /* module cards */
+  .module{padding:14px;border-radius:18px;background:rgba(255,255,255,.035);border:1px solid var(--line);margin-bottom:12px}
+  .mhead{display:flex;align-items:center;gap:11px}
+  .accent{width:10px;height:10px;border-radius:50%;box-shadow:0 0 12px currentColor;flex:0 0 auto}
+  .mname{font-size:14px;font-weight:600;line-height:1.2}
+  .mmeta{font-size:11.5px;color:var(--muted)}
+  .mbody{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:none}
+  .module.open .mbody{display:block}
+  .expander{background:none;border:none;color:var(--muted);padding:4px 6px;font-size:15px}
+
+  /* shortcuts editor */
+  .sc{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;background:rgba(255,255,255,.04);margin-bottom:8px}
+  .sc img{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.08);object-fit:contain}
+  .sc .sc-main{flex:1;min-width:0}
+  .sc .sc-label{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc .sc-path{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* picker modal */
+  .modal{position:fixed;inset:0;background:rgba(3,6,12,.66);backdrop-filter:blur(8px);display:none;
+    align-items:center;justify-content:center;padding:24px;z-index:50}
+  .modal.show{display:flex}
+  .modal .sheet{width:min(560px,100%);max-height:72vh;display:flex;flex-direction:column;padding:18px}
+  .applist{overflow:auto;margin-top:12px;padding-right:4px}
+  .approw{display:flex;align-items:center;gap:11px;padding:9px;border-radius:12px;cursor:pointer}
+  .approw:hover{background:rgba(255,255,255,.07)}
+  .approw img{width:26px;height:26px;object-fit:contain}
+  .approw .nm{font-size:13px}
+
+  /* drop zone */
+  .drop{border:1.5px dashed rgba(255,255,255,.22);border-radius:18px;padding:22px;text-align:center;
+    color:var(--muted);font-size:13px;transition:.2s;cursor:pointer}
+  .drop.hot{border-color:#7CE7FF;background:rgba(124,231,255,.07);color:#CFEFFF}
+  .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+  code{background:rgba(255,255,255,.07);padding:2px 6px;border-radius:6px;font-size:11.5px}
+
+  #toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,20px);opacity:0;transition:.3s;
+    padding:12px 20px;border-radius:14px;font-size:13px;pointer-events:none;z-index:60}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div class="bg"><span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span></div>
+<div class="vignette"></div>
+
+<div class="wrap">
+  <header class="top glass">
+    <div class="logo">◈</div>
+    <div>
+      <h1>DESKGADGET</h1>
+      <p id="srvline">starting…</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="chips">
+      <span class="chip" id="usbchip"><i class="dot off"></i> USB</span>
+      <span class="chip" id="addrchip">—</span>
+      <span class="chip" id="verchip">v1.0.0</span>
+      <span class="chip" id="livechip">live</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card glass">
+      <h2>DEVICES</h2>
+      <p class="hint">Tick the modules each phone should show. Order controls swipe order.</p>
+      <div id="devices"><p class="hint">No devices paired yet — open the app on your phone.</p></div>
+    </section>
+
+    <section class="card glass">
+      <h2>MODULES</h2>
+      <p class="hint">Installed on this PC. Toggle, configure, or add your own.</p>
+      <div id="modules"></div>
+      <div class="drop" id="drop">
+        <div>Drop a module <code>.zip</code> here to install</div>
+        <div style="margin-top:6px;font-size:11.5px">or <span style="color:#9FE8FF;text-decoration:underline">browse files</span></div>
+        <input type="file" id="file" accept=".zip" hidden />
+      </div>
+      <div class="row">
+        <button class="ghost" id="rescan">Rescan plugins</button>
+        <button class="ghost" onclick="location.href='/api/template'">Download starter module</button>
+        <button class="ghost" onclick="window.open('/docs/plugins','_blank')">Plugin docs</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet glass">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px">Pick an app</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="mclose">Close</button>
+    </div>
+    <input type="text" id="search" placeholder="Search installed apps…" style="margin-top:12px" />
+    <div class="applist" id="applist"></div>
+  </div>
+</div>
+
+<div id="toast" class="glass"></div>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+let state = null, apps = [], editing = false, openModules = new Set();
+
+function toast(text){
+  const t = $('#toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(window._tt); window._tt = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+async function api(path, body, method){
+  const res = await fetch(path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: body ? {'Content-Type':'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) toast(data.error || 'Request failed');
+  return data;
+}
+
+/* ---------------- render ---------------- */
+function render(){
+  if(!state) return;
+  const s = state.server;
+  $('#srvline').textContent = `${s.name} · serving ${state.devices.length ? state.devices.length + ' device(s)' : 'waiting for a phone'}`;
+  $('#addrchip').textContent = `${s.ip}:${s.port}`;
+  $('#verchip').textContent = 'v' + s.version;
+  const usb = $('#usbchip');
+  usb.innerHTML = `<i class="dot ${s.usb.available && s.usb.devices.length ? '' : 'off'}"></i> ` +
+    (s.usb.devices.length ? 'USB ' + s.usb.devices.length : (s.usb.available ? 'USB idle' : 'no adb'));
+
+  renderDevices();
+  renderModules();
+}
+
+function renderDevices(){
+  const box = $('#devices');
+  if(!state.devices.length){
+    box.innerHTML = '<p class="hint">No devices paired yet — open the app on your phone and it will connect.</p>';
+    return;
+  }
+  box.innerHTML = state.devices.map(d=>{
+    // render in the order this device actually shows them, not module load order
+    const ordered = [...state.modules]
+      .map(m => ({ m, a: d.assignments[m.id] || { enabled: false, position: 100 } }))
+      .sort((x, y) => (x.a.position - y.a.position) || x.m.id.localeCompare(y.m.id));
+    const rows = ordered.map(({ m, a })=>`
+      <div class="modrow" draggable="true" data-dev="${d.id}" data-mod="${m.id}">
+        <span class="grip">⠿</span>
+        <span class="accent" style="color:${m.accent};background:${m.accent}"></span>
+        <span class="nm">${esc(m.name)}<small>${a.enabled?'shown':'hidden'}</small></span>
+        <div class="arrows">
+          <button class="ghost up" title="Move up">↑</button>
+          <button class="ghost down" title="Move down">↓</button>
+        </div>
+        <div class="sw ${a.enabled?'on':''}" data-toggle></div>
+      </div>`).join('');
+    return `<div class="device">
+      <div class="devhead">
+        <span class="dot ${d.online?'':'off'}"></span>
+        <div><div class="devname">${esc(d.name)}</div>
+        <div class="devsub">${d.online?'connected':(d.last_seen? 'last seen '+d.last_seen.replace('T',' ') : 'offline')}</div></div>
+        <div class="spacer"></div>
+        <button class="ghost rename">Rename</button>
+        <button class="ghost danger remove">Remove</button>
+      </div>
+      <div class="themerow">
+        <span class="lbl">THEME</span>
+        ${[['liquid','Liquid'],['glass','Full Glass'],['black','OLED Black'],['white','White'],['graphite','Graphite'],['aurora','Aurora']]
+          .map(([id,label])=>`<button class="tbtn ${(d.theme||'liquid')===id?'on':''}" data-theme="${id}">${label}</button>`).join('')}
+      </div>
+      <div class="themerow">
+        <span class="lbl">SCREEN</span>
+        <button class="tbtn ${d.keep_screen?'on':''}" data-keep="1">${d.keep_screen?'Keep awake: on':'Keep awake: off'}</button>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function renderModules(){
+  const box = $('#modules');
+  box.innerHTML = state.modules.map(m=>{
+    const fields = Object.entries(m.settings_schema || {}).map(([key, f])=>fieldHtml(m, key, f)).join('');
+    return `<div class="module ${openModules.has(m.id)?'open':''}" data-mod="${m.id}">
+      <div class="mhead">
+        <span class="accent" style="color:${m.accent};background:${m.accent}"></span>
+        <div style="flex:1">
+          <div class="mname">${esc(m.name)}</div>
+          <div class="mmeta">v${esc(m.version)}${m.author?' · '+esc(m.author):''}</div>
+        </div>
+        <button class="expander" data-expand>⌃</button>
+        <div class="sw ${m.enabled?'on':''}" data-menabled title="Enable module"></div>
+      </div>
+      <div class="mbody">
+        ${m.description?`<p class="hint">${esc(m.description)}</p>`:''}
+        ${fields || '<p class="hint">No settings.</p>'}
+      </div>
+    </div>`;
+  }).join('') || '<p class="hint">No modules installed.</p>';
+}
+
+function fieldHtml(m, key, f){
+  const val = m.settings[key] ?? f.default ?? '';
+  if(f.type === 'boolean'){
+    return `<div class="modrow" style="background:transparent;padding:4px 0">
+      <span class="nm">${esc(f.label||key)}</span>
+      <div class="sw ${val?'on':''}" data-field="${key}" data-kind="boolean"></div></div>`;
+  }
+  if(f.type === 'enum'){
+    const opts = (f.options||[]).map(o=>`<option ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('');
+    return `<label class="field"><span>${esc(f.label||key)}</span>
+      <select data-field="${key}" data-kind="enum">${opts}</select></label>`;
+  }
+  if(f.type === 'multienum'){
+    const cur = Array.isArray(val) ? val : (Array.isArray(f.default) ? f.default : []);
+    const summary = cur.length ? cur.join(', ') : 'Select topics…';
+    const opts = (f.options||[])
+      .map(o=>`<label class="ms-opt"><input type="checkbox" data-msopt="${key}" value="${esc(o)}" ${cur.includes(o)?'checked':''}/><span>${esc(o)}</span></label>`)
+      .join('');
+    return `<div class="field"><span>${esc(f.label||key)}</span>
+      <div class="ms" data-ms="${key}">
+        <button type="button" class="ms-btn"><span class="ms-label">${esc(summary)}</span><i>▾</i></button>
+        <div class="ms-menu">${opts}</div>
+      </div></div>`;
+  }
+  if(f.type === 'shortcuts') return shortcutsHtml(m, val);
+  const type = f.type === 'number' ? 'number' : 'text';
+  return `<label class="field"><span>${esc(f.label||key)}</span>
+    <input type="${type}" data-field="${key}" data-kind="${type}" value="${esc(val)}"
+      placeholder="${esc(f.placeholder||'')}" /></label>`;
+}
+
+function shortcutsHtml(m, items){
+  items = Array.isArray(items) ? items : [];
+  const rows = items.map((it,i)=>`
+    <div class="sc" data-i="${i}">
+      <img src="/icons/${it.icon||''}" onerror="this.style.opacity=.25" />
+      <div class="sc-main"><div class="sc-label">${esc(it.label || it.path.split('\\\\').pop())}</div>
+        <div class="sc-path">${esc(it.path)}</div></div>
+      <button class="ghost" data-pick="${i}">Change</button>
+      <button class="ghost danger" data-del="${i}">✕</button>
+    </div>`).join('');
+  return `<div data-shortcuts="${m.id}">
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;letter-spacing:.06em">SHORTCUTS</div>
+    ${rows || '<p class="hint">No shortcuts yet.</p>'}
+    <button class="ghost" data-add>+ Add shortcut</button>
+  </div>`;
+}
+
+/* ---------------- events ---------------- */
+document.addEventListener('focusin', e=>{ if(e.target.matches('input,select')) editing = true; });
+document.addEventListener('focusout', e=>{ if(e.target.matches('input,select')) setTimeout(()=>editing=false, 120); });
+
+$('#devices').addEventListener('click', async e=>{
+  const keepBtn = e.target.closest('[data-keep]');
+  if(keepBtn){
+    const devEl = keepBtn.closest('.device');
+    const idx = [...document.querySelectorAll('.device')].indexOf(devEl);
+    const d = state.devices[idx];
+    if(d){
+      await api(`/api/devices/${d.id}/screen`, { enabled: !d.keep_screen });
+      toast(!d.keep_screen ? 'Screen stays awake' : 'Screen sleeps normally');
+      refresh();
+    }
+    return;
+  }
+  const themeBtn = e.target.closest('[data-theme]');
+  if(themeBtn){
+    const devEl = themeBtn.closest('.device');
+    const idx = [...document.querySelectorAll('.device')].indexOf(devEl);
+    const d = state.devices[idx];
+    if(d){
+      await api(`/api/devices/${d.id}/theme`, { theme: themeBtn.dataset.theme });
+      toast('Theme: ' + themeBtn.textContent);
+      refresh();
+    }
+    return;
+  }
+  const row = e.target.closest('.modrow');
+  if(!row) {
+    const dev = e.target.closest('.device'); if(!dev) return;
+    const id = [...document.querySelectorAll('.device')].indexOf(dev);
+    const d = state.devices[id];
+    if(e.target.classList.contains('rename')){
+      const name = prompt('Device name', d.name); if(name){ await api(`/api/devices/${d.id}/rename`, {name}); refresh(); }
+    }
+    if(e.target.classList.contains('remove')){
+      if(confirm(`Remove ${d.name}?`)){ await api(`/api/devices/${d.id}`, null, 'DELETE'); refresh(); }
+    }
+    return;
+  }
+  const devId = row.dataset.dev, modId = row.dataset.mod;
+  const d = state.devices.find(x=>x.id===devId);
+  const items = state.modules.map((m,idx)=>({
+    module: m.id,
+    enabled: !!(d.assignments[m.id]?.enabled),
+    position: d.assignments[m.id]?.position ?? 100+idx
+  }));
+  const target = items.find(i=>i.module===modId);
+
+  if(e.target.closest('[data-toggle]')){
+    target.enabled = !target.enabled;
+    await api('/api/assignments', {device_id: devId, items});
+    refresh();
+  } else if(e.target.closest('.up') || e.target.closest('.down')){
+    const sorted = [...items].sort((a,b)=> (a.position - b.position) || a.module.localeCompare(b.module));
+    const i = sorted.findIndex(x=>x.module===modId);
+    const j = e.target.closest('.up') ? i-1 : i+1;
+    if(j<0 || j>=sorted.length) return;
+    [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    sorted.forEach((it,idx)=>it.position = idx);
+    await api('/api/assignments', {device_id: devId, items: sorted});
+    refresh();
+  }
+});
+
+$('#modules').addEventListener('click', async e=>{
+  const card = e.target.closest('.module'); if(!card) return;
+  const id = card.dataset.mod;
+  const mod = state.modules.find(m=>m.id===id);
+
+  if(e.target.closest('[data-expand]')){
+    openModules.has(id) ? openModules.delete(id) : openModules.add(id);
+    card.classList.toggle('open'); return;
+  }
+  if(e.target.closest('[data-menabled]')){
+    await api(`/api/modules/${id}/enabled`, {enabled: !mod.enabled});
+    refresh(); return;
+  }
+  if(e.target.closest('.ms-btn')){
+    const ms = e.target.closest('.ms');
+    document.querySelectorAll('.ms.open').forEach(x=>{ if(x!==ms) x.classList.remove('open'); });
+    ms.classList.toggle('open');
+    return;
+  }
+  if(e.target.closest('[data-add]')){
+    openPicker(mod, -1); return;
+  }
+  if(e.target.closest('[data-pick]')){
+    openPicker(mod, +e.target.closest('[data-pick]').dataset.pick); return;
+  }
+  if(e.target.closest('[data-del]')){
+    const i = +e.target.closest('[data-del]').dataset.del;
+    const items = [...(mod.settings.items||[])]; items.splice(i,1);
+    await saveShortcuts(mod, items); return;
+  }
+  if(e.target.closest('.sw[data-field]')){
+    const sw = e.target.closest('.sw');
+    const items = {...mod.settings}; items[sw.dataset.field] = !sw.classList.contains('on');
+    await api(`/api/modules/${id}/settings`, items); refresh();
+  }
+});
+
+$('#modules').addEventListener('change', async e=>{
+  const opt = e.target.closest('input[data-msopt]');
+  if(opt){
+    const ms = opt.closest('.ms');
+    const key = opt.dataset.msopt;
+    const card = opt.closest('.module');
+    const id = card.dataset.mod;
+    const mod = state.modules.find(m=>m.id===id);
+    const values = [...ms.querySelectorAll('input[data-msopt]:checked')].map(i=>i.value);
+    const settings = {...mod.settings, [key]: values};
+    mod.settings = settings;
+    const label = ms.querySelector('.ms-label');
+    if(label) label.textContent = values.length ? values.join(', ') : 'Select topics…';
+    await api(`/api/modules/${id}/settings`, settings);
+    return;
+  }
+  const el = e.target.closest('[data-field]'); if(!el) return;
+  if(el.classList.contains('sw')) return;
+  const card = el.closest('.module'); const id = card.dataset.mod;
+  const mod = state.modules.find(m=>m.id===id);
+  const settings = {...mod.settings};
+  settings[el.dataset.field] = el.dataset.kind === 'number' ? Number(el.value) : el.value;
+  await api(`/api/modules/${id}/settings`, settings);
+  toast('Saved');
+});
+
+async function saveShortcuts(mod, items){
+  const settings = {...mod.settings, items};
+  await api(`/api/modules/${mod.id}/settings`, settings);
+  toast('Shortcuts updated');
+  refresh();
+}
+
+/* app picker */
+let pickTarget = null, pickIndex = -1;
+async function openPicker(mod, index){
+  pickTarget = mod; pickIndex = index;
+  if(!apps.length){
+    const r = await api('/api/apps'); apps = r.apps || [];
+  }
+  $('#modal').classList.add('show');
+  $('#search').value = ''; drawApps('');
+  setTimeout(()=>$('#search').focus(), 60);
+}
+function drawApps(q){
+  q = q.toLowerCase();
+  const list = apps.filter(a=>!q || a.name.toLowerCase().includes(q)).slice(0,120);
+  $('#applist').innerHTML = list.map((a,i)=>`<div class="approw" data-app="${esc(a.path)}" data-name="${esc(a.name)}">
+    <img src="/icons/${a.icon}" onerror="this.style.opacity=.2" />
+    <div class="nm">${esc(a.name)}</div></div>`).join('') || '<p class="hint">No matches.</p>';
+}
+$('#search').addEventListener('input', e=>drawApps(e.target.value));
+$('#applist').addEventListener('click', async e=>{
+  const row = e.target.closest('.approw'); if(!row) return;
+  const items = [...(pickTarget.settings.items||[])];
+  const entry = {id: 'sc-' + Math.random().toString(36).slice(2,8), label: row.dataset.name, path: row.dataset.app};
+  const app = apps.find(a=>a.path===row.dataset.app);
+  if(app) entry.icon = app.icon;
+  if(pickIndex >= 0) items[pickIndex] = {...items[pickIndex], ...entry, id: items[pickIndex].id || entry.id};
+  else items.push(entry);
+  $('#modal').classList.remove('show');
+  await saveShortcuts(pickTarget, items);
+});
+$('#mclose').onclick = ()=>$('#modal').classList.remove('show');
+$('#modal').onclick = e=>{ if(e.target.id==='modal') $('#modal').classList.remove('show'); };
+
+/* upload / rescan */
+const drop = $('#drop'), file = $('#file');
+drop.onclick = ()=>file.click();
+drop.ondragover = e=>{e.preventDefault(); drop.classList.add('hot');};
+drop.ondragleave = ()=>drop.classList.remove('hot');
+drop.ondrop = e=>{ e.preventDefault(); drop.classList.remove('hot'); if(e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); };
+file.onchange = ()=>file.files[0] && upload(file.files[0]);
+async function upload(f){
+  const fd = new FormData(); fd.append('file', f);
+  toast('Installing ' + f.name + '…');
+  const res = await fetch('/api/modules/install', {method:'POST', body:fd});
+  const data = await res.json().catch(()=>({}));
+  toast(res.ok ? 'Installed ' + data.id : (data.error || 'Install failed'));
+  refresh();
+}
+$('#rescan').onclick = async ()=>{ await api('/api/modules/reload', {}); toast('Plugins rescanned'); refresh(); };
+
+/* helpers */
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function refresh(){
+  if(editing) return;
+  state = await api('/api/state');
+  render();
+}
+
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(x=>x.classList.remove('open'));
+});
+
+/* drag a module row to reorder it */
+let dragRow = null;
+document.addEventListener('dragstart', e => {
+  const row = e.target.closest('.modrow[draggable]');
+  if(!row || e.target.closest('.sw,button')) return;
+  dragRow = row;
+  row.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', row.dataset.mod);
+});
+document.addEventListener('dragend', () => {
+  if(dragRow) dragRow.classList.remove('dragging');
+  dragRow = null;
+  document.querySelectorAll('.drop-before,.drop-after').forEach(el=>el.classList.remove('drop-before','drop-after'));
+});
+$('#devices').addEventListener('dragover', e => {
+  if(!dragRow) return;
+  const row = e.target.closest('.modrow');
+  if(!row || row === dragRow || row.parentElement !== dragRow.parentElement) return;
+  e.preventDefault();
+  const rect = row.getBoundingClientRect();
+  const after = e.clientY > rect.top + rect.height / 2;
+  document.querySelectorAll('.drop-before,.drop-after').forEach(el=>el.classList.remove('drop-before','drop-after'));
+  row.classList.add(after ? 'drop-after' : 'drop-before');
+});
+$('#devices').addEventListener('drop', async e => {
+  if(!dragRow) return;
+  e.preventDefault();
+  const row = e.target.closest('.modrow');
+  if(row && row !== dragRow && row.parentElement === dragRow.parentElement){
+    const rect = row.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    row.parentElement.insertBefore(dragRow, after ? row.nextSibling : row);
+  }
+  const devEl = dragRow.closest('.device');
+  const devId = dragRow.dataset.dev;
+  const device = state.devices.find(d => d.id === devId);
+  const order = [...devEl.querySelectorAll('.modrow')].map(r => r.dataset.mod);
+  const items = order.map((mod, idx) => ({
+    module: mod,
+    enabled: !!((device.assignments[mod] || {}).enabled),
+    position: idx
+  }));
+  dragRow = null;
+  await api('/api/assignments', { device_id: devId, items });
+  toast('Order saved');
+  refresh();
+});
+
+
+let feed = null;
+function connectFeed(){
+  try{
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    feed = new WebSocket(proto + location.host + '/ws/dashboard');
+    feed.onopen = ()=>markLive(true);
+    feed.onmessage = (ev)=>{
+      try{
+        const msg = JSON.parse(ev.data);
+        if(msg.type === 'state' && !editing){ state = msg.state; render(); markLive(true); }
+      }catch(e){}
+    };
+    feed.onclose = ()=>{ markLive(false); setTimeout(connectFeed, 1500); };
+    feed.onerror = ()=>{ try{ feed.close(); }catch(e){} };
+  }catch(e){ setTimeout(connectFeed, 2000); }
+}
+function markLive(on){
+  const chip = document.getElementById('livechip');
+  if(!chip) return;
+  chip.textContent = on ? 'live' : 'reconnecting';
+  chip.style.color = on ? '' : '#FF8CA8';
+}
+refresh();
+connectFeed();
+</script>
+</body>
+</html>

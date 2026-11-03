@@ -1,0 +1,11 @@
+{
+  "id": "network",
+  "name": "Network",
+  "version": "1.0.0",
+  "author": "DESKGadget",
+  "description": "Public and LAN addresses, latency and current throughput.",
+  "accent": "#7CE7FF",
+  "interval": 10.0,
+  "default_enabled": true,
+  "settings": {}
+}

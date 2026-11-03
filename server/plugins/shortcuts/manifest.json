@@ -1,0 +1,22 @@
+{
+  "id": "shortcuts",
+  "name": "Shortcuts",
+  "version": "1.0.0",
+  "author": "LiquidDeck",
+  "description": "Launch apps on this PC. Icons are pulled from the apps automatically.",
+  "accent": "#B69CFF",
+  "interval": 30.0,
+  "default_enabled": true,
+  "settings": {
+    "items": {
+      "type": "shortcuts",
+      "label": "Shortcuts",
+      "default": []
+    },
+    "columns": {
+      "type": "number",
+      "label": "Columns",
+      "default": 3
+    }
+  }
+}
