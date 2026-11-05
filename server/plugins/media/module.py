@@ -12,6 +12,7 @@ import ctypes
 import logging
 import subprocess
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from core import paths, smtc
@@ -51,6 +52,7 @@ class Module(BaseModule):
         # SMTC lives on its own thread: a wedged WinRT call must never block
         # the Core Audio worker (that froze volume completely)
         self._now_running = False
+        self._now_started = 0.0
         self._now_lock = threading.Lock()
 
     # -- plumbing ----------------------------------------------------------
@@ -215,8 +217,13 @@ class Module(BaseModule):
         """Poll SMTC on a throwaway thread; never block the audio worker."""
         with self._now_lock:
             if self._now_running:
-                return
+                # Windows' media broker can wedge; let a new thread take over
+                # once the old one has been stuck for long enough
+                if time.time() - self._now_started < 20:
+                    return
+                log.warning("SMTC poll has been stuck; retrying on a new thread")
             self._now_running = True
+            self._now_started = time.time()
 
         def work() -> None:
             value = None
