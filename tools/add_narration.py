@@ -27,7 +27,7 @@ LINES = [
     (14.4, "Switch between windows without touching the mouse."),
     (18.4, "Clipboard goes both ways. Read it here, send text back."),
     (23.6, "Wake another machine, check the battery, and add modules without rebuilding the app."),
-    (29.6, "DESKGadget. Windows and Android."),
+    (29.6, "Desk Gadget. Windows and Android, completely free."),
 ]
 
 
