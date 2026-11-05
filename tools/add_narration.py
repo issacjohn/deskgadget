@@ -19,7 +19,7 @@ import imageio_ffmpeg
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 # override with DG_VOICE, e.g. en-US-AndrewNeural (male)
-VOICE = os.environ.get("DG_VOICE", "en-US-AndrewNeural")
+VOICE = os.environ.get("DG_VOICE", "en-US-AvaNeural")
 
 # (start seconds, spoken line)
 LINES = [

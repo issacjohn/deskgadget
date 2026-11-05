@@ -11,7 +11,7 @@ from pathlib import Path
 import imageio_ffmpeg
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-MUSIC_GAIN = 0.22
+MUSIC_GAIN = 0.30
 
 
 def build(video: Path, music: Path, out: Path) -> None:
