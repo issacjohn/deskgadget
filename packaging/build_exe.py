@@ -3,8 +3,8 @@
     python packaging/build_exe.py
 
 Outputs:
-    dist/DESKGadget.exe         portable, double-click to run
-    dist/DESKGadget-Setup.exe   installer: copies to %LOCALAPPDATA%, makes
+    dist/DeskGadget.exe         portable, double-click to run
+    dist/DeskGadget-Setup.exe   installer: copies to %LOCALAPPDATA%, makes
                                 shortcuts, launches
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
-APP_EXE = DIST / "DESKGadget.exe"
+APP_EXE = DIST / "DeskGadget.exe"
 PAYLOAD = BUILD / "payload.zip"
 
 
@@ -128,23 +128,23 @@ def main() -> None:
     ]
 
     print("\n=== building portable app ===")
-    pyinstaller("DESKGadget", str(ROOT / "packaging" / "launcher.py"), "app", extra)
+    pyinstaller("DeskGadget", str(ROOT / "packaging" / "launcher.py"), "app", extra)
 
     print("\n=== packaging payload ===")
     BUILD.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(PAYLOAD, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(APP_EXE, "DESKGadget.exe")
+        zf.write(APP_EXE, "DeskGadget.exe")
 
     print("\n=== building installer ===")
     pyinstaller(
-        "DESKGadget-Setup",
+        "DeskGadget-Setup",
         str(ROOT / "packaging" / "installer.py"),
         "setup",
         ["--add-data", f"{PAYLOAD}{';'}."],
     )
 
     print("\nDone:")
-    for f in (DIST / "DESKGadget.exe", DIST / "DESKGadget-Setup.exe"):
+    for f in (DIST / "DeskGadget.exe", DIST / "DeskGadget-Setup.exe"):
         if f.exists():
             print(f"  {f}  ({f.stat().st_size / 1_048_576:.1f} MB)")
 

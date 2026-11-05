@@ -26,6 +26,7 @@ packaging/vendor/
 
 # ---- binaries are published as GitHub Releases, not committed --------------
 DESKGadget.exe
+DeskGadget.exe
 website/assets/*.exe
 website/assets/*.apk
 

@@ -1,6 +1,6 @@
 """One-click Windows installer.
 
-Extracts the bundled payload into %LOCALAPPDATA%\\DESKGadget, creates Desktop and
+Extracts the bundled payload into %LOCALAPPDATA%\\DeskGadget, creates Desktop and
 Start Menu shortcuts, then launches the app.
 """
 from __future__ import annotations
@@ -13,12 +13,36 @@ import time
 import zipfile
 from pathlib import Path
 
-APP = "DESKGadget"
+APP = "DeskGadget"
 
 
 def local_app_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(base) / APP
+
+
+def force_case(path: Path) -> None:
+    """NTFS is case-insensitive, so rename to make the display name match APP."""
+    try:
+        match = next(
+            (c for c in path.parent.iterdir() if c.name.lower() == path.name.lower()),
+            None,
+        )
+        if match and match.name != path.name:
+            tmp = match.with_name(match.name + ".case-tmp")
+            match.rename(tmp)
+            tmp.rename(path)
+    except OSError:
+        pass
+
+
+def drop_old_shortcut(link: Path) -> None:
+    try:
+        for child in link.parent.iterdir():
+            if child.name.lower() == link.name.lower() and child.name != link.name:
+                child.unlink()
+    except OSError:
+        pass
 
 
 def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
@@ -27,7 +51,7 @@ def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
         "$s.TargetPath='{exe}';"
         "$s.WorkingDirectory='{workdir}';"
         "$s.IconLocation='{exe}';"
-        "$s.Description='DESKGadget';"
+        "$s.Description='DeskGadget';"
         "$s.Save()"
     ).format(link=link, exe=exe, workdir=workdir)
     subprocess.run(
@@ -39,7 +63,7 @@ def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
 
 def main() -> None:
     print()
-    print("  DESKGadget setup")
+    print("  DeskGadget setup")
     print("  ------------------------------------")
 
     # stop a running copy so the executable can be replaced
@@ -52,6 +76,7 @@ def main() -> None:
 
     target = local_app_dir()
     target.mkdir(parents=True, exist_ok=True)
+    force_case(target)
 
     # keep the user's devices, settings and custom modules across upgrades
     keep: dict[str, Path] = {}
@@ -79,18 +104,21 @@ def main() -> None:
         shutil.move(str(stash), str(dst))
 
     exe = target / f"{APP}.exe"
+    force_case(exe)
     print(f"  installed to {target}")
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
     if desktop.exists():
+        drop_old_shortcut(desktop / f"{APP}.lnk")
         make_shortcut(desktop / f"{APP}.lnk", exe, target)
 
     programs = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs"
     if programs.exists():
+        drop_old_shortcut(programs / f"{APP}.lnk")
         make_shortcut(programs / f"{APP}.lnk", exe, target)
 
     print("  shortcuts created")
-    print("  starting DESKGadget...")
+    print("  starting DeskGadget...")
     subprocess.Popen([str(exe)], cwd=str(target))
     print()
 

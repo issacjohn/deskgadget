@@ -2,7 +2,7 @@
 
 In development `data_dir()` is the `server/` folder, so plugins and state stay
 in the repo. The packaged launcher copies assets into
-`%LOCALAPPDATA%\\DESKGadget` and points DESKGADGET_DATA there, which keeps the
+`%LOCALAPPDATA%\\DeskGadget` and points DESKGADGET_DATA there, which keeps the
 install directory read-only and lets users drop in their own modules.
 """
 from __future__ import annotations

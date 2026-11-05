@@ -1,6 +1,6 @@
 """Desktop launcher for the packaged app.
 
-Seeds %LOCALAPPDATA%\\DESKGadget with the dashboard, plugins and templates so the
+Seeds %LOCALAPPDATA%\\DeskGadget with the dashboard, plugins and templates so the
 install directory stays read-only, then serves the app and opens the browser.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-APP = "DESKGadget"
+APP = "DeskGadget"
 
 
 def local_app_dir() -> Path:
@@ -76,7 +76,7 @@ def main() -> None:
         threading.Timer(2.0, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
 
     print()
-    print("  DESKGadget server")
+    print("  DeskGadget server")
     print(f"  dashboard: http://localhost:{PORT}")
     print("  press Ctrl+C to stop")
     print()
