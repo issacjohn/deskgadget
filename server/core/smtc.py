@@ -66,7 +66,7 @@ async def _manager():
 
 
 async def _thumb_bytes(ref) -> bytes:
-    from winrt.windows.storage.streams import Buffer, DataReader
+    from winrt.windows.storage.streams import DataReader
 
     stream = await ref.open_read_async()
     size = int(stream.size)
@@ -74,12 +74,15 @@ async def _thumb_bytes(ref) -> bytes:
         return b""
     reader = DataReader(stream)
     await reader.load_async(size)
-    buf = Buffer(size)
-    reader.read_bytes(buf)
-    return bytes(memoryview(buf))
+    # read_bytes() into a fresh Buffer comes back empty; read_buffer() is the
+    # call that actually returns the loaded bytes
+    buffer = reader.read_buffer(size)
+    return bytes(buffer)
 
 
 def _save_art(data: bytes, art_dir: Path) -> str:
+    if len(data) < 128:
+        return ""
     digest = hashlib.sha1(data).hexdigest()[:12]
     ext = "png" if data[:8] == b"\x89PNG\r\n\x1a\n" else "jpg"
     path = art_dir / f"now-{digest}.{ext}"
