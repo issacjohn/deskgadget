@@ -1,17 +1,11 @@
 {
   "id": "system",
   "name": "System",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "DeskGadget",
   "description": "CPU, memory, disk, network, IPs, latency, battery and quick PC actions.",
   "accent": "#6EE7FF",
   "interval": 1.0,
   "default_enabled": true,
-  "settings": {
-    "show_processes": {
-      "type": "boolean",
-      "label": "Show top processes",
-      "default": true
-    }
-  }
+  "settings": {}
 }

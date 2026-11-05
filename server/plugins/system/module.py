@@ -49,7 +49,6 @@ class Module(BaseModule):
         self.net_up = 0.0
         self.net_down = 0.0
         self.history: deque[float] = deque(maxlen=48)
-        self.processes: list[dict] = []
         self._boot = psutil.boot_time()
         self.public_ip = "…"
         self.latency: float | None = None
@@ -132,48 +131,6 @@ class Module(BaseModule):
         self.net_up = up
         self.net_down = down
 
-        # the process scan is the expensive part; run it off-loop and only
-        # every few seconds so the 1s cadence never waits on it
-        self._tick = getattr(self, "_tick", 0) + 1
-        if not self.settings.get("show_processes", True):
-            return
-        task = getattr(self, "_scan_task", None)
-        if (task is None or task.done()) and (self._tick % 4 == 1 or not self.processes):
-            self._scan_task = asyncio.create_task(self._scan_processes())
-
-    async def _scan_processes(self) -> None:
-        try:
-            self.processes = await asyncio.to_thread(self._scan_processes_sync)
-        except Exception:
-            pass
-
-    def _scan_processes_sync(self) -> list[dict]:
-        rows = []
-        for proc in sorted(
-            psutil.process_iter(["pid", "name", "memory_info"]),
-            key=lambda p: (p.info.get("memory_info").rss if p.info.get("memory_info") else 0),
-            reverse=True,
-        )[:4]:
-            info = proc.info
-            mib = (info.get("memory_info").rss / (1024 ** 2)) if info.get("memory_info") else 0
-            rows.append(
-                {
-                    "title": (info.get("name") or "?")[:26],
-                    "sub": f"PID {info.get('pid')}",
-                    "value": f"{mib:.0f} MB",
-                }
-            )
-        return rows
-
-    def _minutes(self, seconds) -> str:
-        try:
-            value = float(seconds)
-        except (TypeError, ValueError):
-            return "unknown"
-        if value < 0 or value > 60 * 60 * 72:
-            return "calculating"
-        mins = int(value // 60)
-        return f"{mins} min" if mins < 60 else f"{mins // 60}h {mins % 60:02d}m"
 
     def _rate(self, bps: float) -> str:
         if bps > 1024 ** 2:
@@ -233,14 +190,6 @@ class Module(BaseModule):
             {
                 "type": "gauges",
                 "items": gauges,
-            },
-            {
-                "type": "hero",
-                "label": "CPU LOAD",
-                "value": f"{self.cpu:.0f}",
-                "unit": "%",
-                "sub": self._cpu_sub(),
-                "progress": self.cpu / 100,
             },
             {
                 "type": "sparkline",
@@ -321,6 +270,4 @@ class Module(BaseModule):
                 ],
             },
         ]
-        if self.processes:
-            blocks.append({"type": "list", "title": "TOP PROCESSES", "items": self.processes})
         return {"blocks": blocks}
