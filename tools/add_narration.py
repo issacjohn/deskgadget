@@ -21,8 +21,8 @@ VOICE = "en-US-AvaNeural"
 
 # (start seconds, spoken line)
 LINES = [
-    (0.2, "Your phone just became the control panel for your PC."),
-    (4.2, "Now playing, with artwork, volume, and every microphone."),
+    (0.0, "Your old phone or tablet just became the control panel for your PC."),
+    (4.6, "Now playing, with artwork, volume, and every microphone."),
     (9.4, "Tap a headline, and it opens on your desktop, already in front."),
     (14.4, "Switch between windows without touching the mouse."),
     (18.4, "Clipboard goes both ways. Read it here, send text back."),
