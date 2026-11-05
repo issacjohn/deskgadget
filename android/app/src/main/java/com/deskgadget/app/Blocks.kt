@@ -104,7 +104,7 @@ fun BlockView(
         "slider" -> SliderCard(block, accent) { id, value ->
             onAction(id, JSONObject().put("value", value))
         }
-        "nowplaying" -> NowPlayingCard(block, accent) { seconds ->
+        "nowplaying" -> NowPlayingCard(block, accent, endpoint) { seconds ->
             onAction(block.str("action"), JSONObject().put("value", seconds))
         }
         "textinput" -> TextInputCard(block, accent) { action, text ->
@@ -901,11 +901,14 @@ private fun TextInputCard(
 private fun NowPlayingCard(
     block: JSONObject,
     accent: Color,
+    endpoint: String,
     onSeek: (Int) -> Unit,
 ) {
     val duration = block.num("duration", 0.0).toFloat()
     val position = block.num("position", 0.0).toFloat()
-    val artwork = block.str("artwork")
+    val rawArt = block.str("artwork")
+    // the server sends a root-relative path; Coil needs a full URL
+    val artwork = if (rawArt.startsWith("/")) endpoint.trimEnd('/') + rawArt else rawArt
 
     GlassPanel(
         Modifier.fillMaxWidth(),
