@@ -42,3 +42,7 @@ Thumbs.db
 # runtime media artwork (written by the media module)
 server/artwork/
 artwork/
+
+# demo videos stay local
+docs/*.mp4
+
