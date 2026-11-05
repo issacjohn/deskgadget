@@ -1,0 +1,23 @@
+{
+  "id": "wol",
+  "name": "Wake on LAN",
+  "version": "1.0.0",
+  "author": "DESKGadget",
+  "description": "Wake other machines on your network from the panel. One magic packet per tap.",
+  "accent": "#9BFFC4",
+  "interval": 30.0,
+  "default_enabled": false,
+  "settings": {
+    "targets": {
+      "type": "string",
+      "label": "Targets",
+      "default": "",
+      "placeholder": "Gaming PC=AA:BB:CC:DD:EE:FF, NAS=11:22:33:44:55:66"
+    },
+    "broadcast": {
+      "type": "string",
+      "label": "Broadcast address",
+      "default": "255.255.255.255"
+    }
+  }
+}

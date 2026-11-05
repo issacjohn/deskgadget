@@ -19,12 +19,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
+import requests
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .core.base import load_plugins
 from .core.hub import Conn, Hub
+from .core.web import open_url
 from .core.netutil import AdbBridge, Beacon, Discovery, lan_ip
 from .core.paths import dashboard_dir, plugins_dir, state_dir, templates_dir
 from .core.store import Store
@@ -127,6 +129,11 @@ async def ws_endpoint(ws: WebSocket):
             elif mtype == "refresh":
                 for demo in hub.pages_for(conn.device_id):
                     await conn.send_page(demo["id"], demo)
+            elif mtype == "open_url":
+                url = str(msg.get("url", ""))
+                if url.startswith(("http://", "https://")):
+                    await asyncio.to_thread(open_url, url)
+                    await conn.send({"v": 1, "type": "toast", "text": "Opened on the PC"})
     except (WebSocketDisconnect, asyncio.TimeoutError):
         pass
     except Exception:
@@ -363,6 +370,21 @@ async def api_launch(req: Request):
     return {"ok": ok, "message": message}
 
 
+@app.get("/artwork/{name}")
+async def artwork(name: str):
+    safe = Path(name).name
+    path = state_dir().parent / "artwork" / safe
+    if not path.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    media = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "max-age=86400"})
+
+
 @app.get("/icons/{name}")
 async def icons(name: str):
     from .core.launcher import ensure_icon
@@ -398,6 +420,154 @@ async def reload_modules() -> None:
 async def api_reload():
     await reload_modules()
     return {"ok": True, "modules": [m.id for m in hub.modules.values()]}
+
+
+# --------------------------------------------------------------------------
+# Module catalogue: every module this install knows about, on disk or on GitHub
+# --------------------------------------------------------------------------
+CATALOG_URL = "https://raw.githubusercontent.com/issacjohn/deskgadget/main/catalog.json"
+PLUGIN_RAW = "https://raw.githubusercontent.com/issacjohn/deskgadget/main/server/plugins/{id}/{file}"
+SAFE_ID = set("abcdefghijklmnopqrstuvwxyz0123456789_-")
+
+
+def _safe_id(module_id: str) -> str | None:
+    clean = module_id.strip().lower()
+    if not clean or any(ch not in SAFE_ID for ch in clean):
+        return None
+    return clean
+
+
+def _removed_dir() -> Path:
+    path = plugins_dir().parent / "plugins_removed"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _catalog_entries() -> dict[str, dict]:
+    entries: dict[str, dict] = {}
+    for mod in hub.modules.values():
+        entries[mod.id] = {
+            "id": mod.id,
+            "name": mod.name,
+            "version": mod.version,
+            "author": mod.author,
+            "description": mod.description,
+            "accent": mod.accent,
+        }
+    for folder in _removed_dir().iterdir():
+        manifest = folder / "manifest.json"
+        if not folder.is_dir() or not manifest.exists():
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        mid = str(data.get("id") or folder.name)
+        entries.setdefault(
+            mid,
+            {
+                "id": mid,
+                "name": data.get("name") or folder.name.title(),
+                "version": data.get("version", ""),
+                "author": data.get("author", ""),
+                "description": data.get("description", ""),
+                "accent": data.get("accent", "#7CE7FF"),
+            },
+        )
+    return entries
+
+
+@app.get("/api/catalog")
+async def api_catalog():
+    entries = _catalog_entries()
+    installed = {m.id for m in hub.modules.values()}
+    source = "bundled"
+    try:
+        response = await asyncio.to_thread(
+            requests.get,
+            CATALOG_URL,
+            timeout=8,
+            headers={"User-Agent": "DESKGadget"},
+        )
+        response.raise_for_status()
+        for item in response.json().get("modules", []):
+            mid = str(item.get("id", ""))
+            if not mid:
+                continue
+            merged = dict(entries.get(mid, {}))
+            merged.update(item)
+            entries[mid] = merged
+        source = "github"
+    except Exception:
+        log.info("module catalogue unreachable; showing local modules only")
+
+    items = [
+        {**entry, "installed": mid in installed}
+        for mid, entry in sorted(
+            entries.items(),
+            key=lambda kv: (kv[0] not in installed, str(kv[1].get("name", kv[0])).lower()),
+        )
+    ]
+    return {"modules": items, "source": source}
+
+
+@app.post("/api/modules/{module_id}/remove")
+async def api_remove_module(module_id: str):
+    import shutil
+
+    mid = _safe_id(module_id)
+    if not mid:
+        return JSONResponse({"error": "bad id"}, status_code=400)
+    src = plugins_dir() / mid
+    if not src.exists():
+        return JSONResponse({"error": "not installed"}, status_code=404)
+    if mid in {"system", "media"}:
+        return JSONResponse({"error": "core module"}, status_code=400)
+    dst = _removed_dir() / mid
+    if dst.exists():
+        shutil.rmtree(dst, ignore_errors=True)
+    shutil.move(str(src), str(dst))
+    await reload_modules()
+    log.info("module removed: %s", mid)
+    return {"ok": True}
+
+
+@app.post("/api/modules/{module_id}/install_from_catalog")
+async def api_install_from_catalog(module_id: str):
+    import shutil
+
+    mid = _safe_id(module_id)
+    if not mid:
+        return JSONResponse({"error": "bad id"}, status_code=400)
+    if mid in hub.modules:
+        return {"ok": True, "already": True}
+
+    target = plugins_dir() / mid
+    stash = _removed_dir() / mid
+    if stash.exists():
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        shutil.move(str(stash), str(target))
+    else:
+        target.mkdir(parents=True, exist_ok=True)
+        try:
+            for name in ("manifest.json", "module.py"):
+                url = PLUGIN_RAW.format(id=mid, file=name)
+                response = await asyncio.to_thread(
+                    requests.get,
+                    url,
+                    timeout=12,
+                    headers={"User-Agent": "DESKGadget"},
+                )
+                response.raise_for_status()
+                (target / name).write_bytes(response.content)
+        except Exception:
+            shutil.rmtree(target, ignore_errors=True)
+            return JSONResponse({"error": "download failed"}, status_code=502)
+
+    await reload_modules()
+    log.info("module installed: %s", mid)
+    return {"ok": True}
 
 
 @app.post("/api/modules/install")

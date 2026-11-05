@@ -1,7 +1,7 @@
 {
   "id": "news",
   "name": "News",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "DESKGadget",
   "description": "Headlines for the region and topics you pick. Tapping one opens it in your PC's browser.",
   "accent": "#FFB86B",
@@ -31,6 +31,12 @@
         "STARTUPS", "CRYPTO", "CLIMATE", "SPACE", "ELECTIONS"
       ],
       "default": ["TECH", "BUSINESS"]
+    },
+    "custom": {
+      "type": "string",
+      "label": "Other topics",
+      "default": "",
+      "placeholder": "anything you want, e.g. formula 1, local elections, tesla"
     },
     "limit": {
       "type": "number",

@@ -13,6 +13,7 @@ import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
+from core import paths, smtc
 from core.base import Module as BaseModule
 
 log = logging.getLogger("liquiddeck.media")
@@ -45,6 +46,7 @@ class Module(BaseModule):
         self.mics: list[dict] = []
         self.outputs: list[dict] = []
         self._mic_tick = 0
+        self.now: dict | None = None
 
     # -- plumbing ----------------------------------------------------------
     def _endpoint(self):
@@ -60,6 +62,17 @@ class Module(BaseModule):
 
         self._ep = AudioUtilities.GetSpeakers().EndpointVolume
         return self._ep
+
+    def _set(self, level: float) -> None:
+        """Set the master volume. Runs on the COM worker thread via _call."""
+        level = max(0.0, min(1.0, level))
+        ep = self._endpoint()
+        if ep is None:
+            return
+        ep.SetMasterVolumeLevelScalar(level, None)
+        self.volume = level
+        if level > 0:
+            self.muted = False
 
     async def _call(self, fn, *args):
         loop = asyncio.get_running_loop()
@@ -85,11 +98,16 @@ class Module(BaseModule):
         elif action in ("toggle_endpoint", "mic_toggle"):
             self._toggle_endpoint(str(payload.get("id", "")))
         elif action == "play_pause":
-            _key(VK_MEDIA_PLAY_PAUSE)
+            if not smtc.command("play_pause"):
+                _key(VK_MEDIA_PLAY_PAUSE)
         elif action == "next":
-            _key(VK_MEDIA_NEXT)
+            if not smtc.command("next"):
+                _key(VK_MEDIA_NEXT)
         elif action == "prev":
-            _key(VK_MEDIA_PREV)
+            if not smtc.command("prev"):
+                _key(VK_MEDIA_PREV)
+        elif action == "seek":
+            smtc.seek(float(payload.get("value", 0)))
 
     def _endpoint_for(self, device_id: str):
         """Both capture and render endpoints are activated the same way."""
@@ -184,10 +202,32 @@ class Module(BaseModule):
         ep = self._endpoint()
         self.volume = float(ep.GetMasterVolumeLevelScalar())
         self.muted = bool(ep.GetMute())
+        # the media session changes on its own; read it here so it rides the
+        # same worker thread as Core Audio
+        try:
+            self.now = smtc.snapshot(paths.data_dir() / "artwork")
+        except Exception:
+            self.now = None
 
     def page(self) -> dict:
         pct = round(self.volume * 100)
-        blocks = [
+        blocks: list[dict] = []
+        now = self.now or {}
+        if now.get("title"):
+            blocks.append(
+                {
+                    "type": "nowplaying",
+                    "title": str(now.get("title", "")),
+                    "artist": str(now.get("artist") or now.get("album") or ""),
+                    "source": str(now.get("source") or ""),
+                    "artwork": str(now.get("artwork") or ""),
+                    "position": round(float(now.get("position") or 0), 1),
+                    "duration": round(float(now.get("duration") or 0), 1),
+                    "playing": bool(now.get("playing")),
+                    "action": "seek",
+                }
+            )
+        blocks += [
             {
                 "type": "hero",
                 "label": "PC VOLUME",

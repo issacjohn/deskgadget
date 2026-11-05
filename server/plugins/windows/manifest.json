@@ -1,0 +1,17 @@
+{
+  "id": "windows",
+  "name": "Windows",
+  "version": "1.0.0",
+  "author": "DESKGadget",
+  "description": "Every open window on the PC. Tap one to bring it forward, or send it to the taskbar.",
+  "accent": "#9BE7FF",
+  "interval": 2.5,
+  "default_enabled": false,
+  "settings": {
+    "limit": {
+      "type": "number",
+      "label": "Windows shown",
+      "default": 8
+    }
+  }
+}

@@ -20,19 +20,29 @@ Windows server · Android client · plugins anyone can write
 
 ## Screenshots
 
-| System | Media |
-|---|---|
-| ![System](docs/screenshots/system.jpg) | ![Media](docs/screenshots/media.jpg) |
+![DESKGadget on a desk](docs/screenshots/desk.jpg)
 
-| News | Shortcuts |
+[▶ Watch the 22-second demo](docs/deskgadget-reel.mp4)
+
+| Home — every module at a glance | Media — now playing, volume, mics |
 |---|---|
-| ![News](docs/screenshots/news.jpg) | ![Shortcuts](docs/screenshots/shortcuts.jpg) |
+| ![Home](docs/screenshots/home.jpg) | ![Media](docs/screenshots/media.jpg) |
+
+| News — with your own topics | Windows — switch what is in front |
+|---|---|
+| ![News](docs/screenshots/news.jpg) | ![Windows](docs/screenshots/windows.jpg) |
+
+| Clipboard — both ways | Wake on LAN |
+|---|---|
+| ![Clipboard](docs/screenshots/clipboard.jpg) | ![Wake on LAN](docs/screenshots/wol.jpg) |
+
+| System | Dashboard |
+|---|---|
+| ![System](docs/screenshots/system.jpg) | ![Dashboard](docs/screenshots/dashboard.jpg) |
 
 | OLED Black | White |
 |---|---|
 | ![OLED](docs/screenshots/theme-black.jpg) | ![White](docs/screenshots/theme-white.jpg) |
-
-![Dashboard](docs/screenshots/dashboard.jpg)
 
 ---
 
@@ -55,9 +65,13 @@ Windows server · Android client · plugins anyone can write
 | Module | What it does |
 |---|---|
 | **System** | CPU, RAM, disk, network, uptime, top processes, live sparkline |
-| **Media** | PC volume + slider, transport, mute **each output**, mute **each microphone** |
-| **News** | Multi-region, multi-topic headlines with publisher logos; tap opens on the PC |
+| **Media** | Now playing with artwork and seek, PC volume, transport, mute **each output**, mute **each microphone** |
+| **News** | Multi-region, multi-topic headlines with publisher logos, plus **free-text topics of your own**; tap opens the article on the PC, in front |
 | **Shortcuts** | Launch Windows apps; **Steam games detected automatically** with cover art |
+| **Windows** | Every open window; tap to bring it forward, or send it to the taskbar |
+| **Wake on LAN** | Magic packet to another machine, straight from the panel |
+| **Clipboard** | Read the PC clipboard, and send text back to it from the phone |
+| **Battery** | Battery or UPS charge, power source and time left |
 | **Weather** | Current + hourly + 7-day, no API key |
 | **Drives** | Ring per volume, free/total meters |
 | **Network** | Public/LAN IP, latency, live throughput |
@@ -65,7 +79,16 @@ Windows server · Android client · plugins anyone can write
 | **Timer** | Countdown / Pomodoro with start, +5, reset |
 | **AudioMesh** | Example third-party module (ship your own the same way) |
 
-Each is its own swipeable page. Tick only what a given phone should show.
+Each is its own swipeable page, and the home grid shows every enabled module with
+its live value. Tick only what a given phone should show.
+
+### Adding and removing modules
+
+**Browse modules** in the dashboard lists everything in
+[`catalog.json`](catalog.json) — the bundled set plus anything published to this
+repo. Add installs it (downloads `manifest.json` + `module.py` if it is not
+already on disk), Remove moves it to `plugins_removed/` so it can be added back
+later. Modules you removed are never re-seeded by an upgrade.
 
 ## Architecture
 
@@ -97,8 +120,16 @@ the dashboard. No admin rights, **no Python required** (the interpreter and `adb
 are bundled).
 
 **Android** — install `DESKGadget.apk` from Releases. It finds the server over
-mDNS, over the UDP beacon, or over USB (`adb reverse` is kept alive by the server),
-and reconnects to whichever route is up.
+mDNS, over the UDP beacon, or over USB, and reconnects to whichever route is up.
+Three transports work, and each remembers its own address:
+
+- **Wi-Fi** — same network, discovered automatically.
+- **USB tethering** — flip *USB tethering* on the phone; **no adb and no developer
+  options** are needed.
+- **USB + adb** — with USB debugging on, the server keeps
+  `adb reverse tcp:8787 tcp:8787` alive and the phone connects to `127.0.0.1`.
+
+See [docs/CONNECTING.md](docs/CONNECTING.md) for setup and troubleshooting.
 
 ```bash
 # from source
@@ -146,11 +177,8 @@ python packaging/build_exe.py     # dist/DESKGadget-Setup.exe
 
 ## Roadmap
 
-- Now Playing (track, artwork, seek) — needs `winsdk` bundled
-- Window switcher (focus/minimise any window)
-- Wake-on-LAN for other machines
-- Clipboard bridge
 - Home Assistant, GitHub notifications, Steam deals
+- Per-module page layouts on the phone
 
 ## License
 

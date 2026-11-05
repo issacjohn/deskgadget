@@ -84,6 +84,17 @@ class MainActivity : ComponentActivity() {
                                     client.disconnect()
                                     stopDeckService()
                                 },
+                                onOpenUrl = { url ->
+                                    // the PC does the opening; the phone is only a remote.
+                                    // If the link is down, fall back to the phone browser.
+                                    if (!client.openUrl(url)) {
+                                        runCatching {
+                                            startActivity(
+                                                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                            )
+                                        }
+                                    }
+                                },
                             )
                         }
                     }

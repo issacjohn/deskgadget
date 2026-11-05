@@ -1,11 +1,11 @@
 {
   "id": "media",
   "name": "Media",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "LiquidDeck",
   "description": "Control this PC's volume and media playback from the phone.",
   "accent": "#FF7AB6",
-  "interval": 3.0,
+  "interval": 2.0,
   "default_enabled": true,
   "settings": {}
 }

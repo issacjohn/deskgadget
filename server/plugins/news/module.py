@@ -1,7 +1,7 @@
 """News module: headlines for the topics and region picked in the dashboard.
 
 Uses Google News RSS, which needs no API key and supports per-country editions.
-Tapping a row opens the article in the phone's browser.
+Tapping a row opens the article on the PC and brings the browser forward.
 """
 from __future__ import annotations
 
@@ -112,16 +112,31 @@ TOPIC_QUERIES = {
 
 
 def _feed_url(topic: str, hl: str, gl: str, ceid: str) -> str:
-    if topic in TOPIC_QUERIES:
-        query = requests.utils.quote(TOPIC_QUERIES[topic])
+    key = topic.strip().upper()
+    if key in TOPIC_QUERIES:
+        query = requests.utils.quote(TOPIC_QUERIES[key])
         return (
             f"https://news.google.com/rss/search?q={query}"
             f"&hl={hl}&gl={gl}&ceid={ceid}"
         )
-    slug = TOPIC_SLUGS.get(topic)
-    if slug is None:
-        return ""
-    return f"https://news.google.com/rss/{slug}?hl={hl}&gl={gl}&ceid={ceid}"
+    slug = TOPIC_SLUGS.get(key)
+    if slug is not None:
+        return f"https://news.google.com/rss/{slug}?hl={hl}&gl={gl}&ceid={ceid}"
+    # anything the user typed under "Other topics" is just a search
+    if topic.strip():
+        query = requests.utils.quote(topic.strip())
+        return (
+            f"https://news.google.com/rss/search?q={query}"
+            f"&hl={hl}&gl={gl}&ceid={ceid}"
+        )
+    return ""
+
+
+def _topic_label(topic: str) -> str:
+    key = topic.strip().upper()
+    if key in TOPIC_QUERIES or key in TOPIC_SLUGS:
+        return key.replace("_", " ")
+    return topic.strip()
 
 
 def _ago(published: datetime | None) -> str:
@@ -182,6 +197,32 @@ class Module(BaseModule):
             topics = [t.strip().upper() for t in raw.split(",")]
         else:
             topics = []
+        return topics
+
+    def _custom_topics(self) -> list[str]:
+        """Free-text topics typed under "Other topics"."""
+        raw = self.settings.get("custom")
+        if isinstance(raw, list):
+            parts = [str(p) for p in raw]
+        else:
+            parts = re.split(r"[,\n;]+", str(raw or ""))
+        out: list[str] = []
+        for part in parts:
+            text = part.strip()
+            if not text:
+                continue
+            # don't duplicate a preset the user also ticked
+            if text.upper() in TOPIC_SLUGS or text.upper() in TOPIC_QUERIES:
+                text = text.upper()
+            if text not in out:
+                out.append(text)
+        return out[:6]
+
+    def _all_topics(self) -> list[str]:
+        topics = self._topics()
+        for custom in self._custom_topics():
+            if custom.upper() not in {t.upper() for t in topics}:
+                topics.append(custom)
         return topics or ["TECH", "BUSINESS"]
 
     def _detect_country(self) -> str:
@@ -220,7 +261,7 @@ class Module(BaseModule):
 
     def _fetch(self) -> list[dict]:
         limit = int(self.settings.get("limit", 8) or 8)
-        topics = self._topics()
+        topics = self._all_topics()
         regions = self._regions()
 
         rows: list[dict] = []
@@ -309,9 +350,9 @@ class Module(BaseModule):
             await self.hub.notify("That link is not from the feed")
             return
         try:
-            import webbrowser
+            from core.web import open_url
 
-            webbrowser.open(url)
+            open_url(url)
             await self.hub.notify("Opened on the PC")
         except Exception:
             log.exception("could not open %s", url)
@@ -319,7 +360,7 @@ class Module(BaseModule):
     # -- render ------------------------------------------------------------
     def page(self) -> dict:
         regions = self._regions()
-        topics = self._topics()
+        topics = self._all_topics()
 
         if not self.items:
             return {
@@ -340,7 +381,7 @@ class Module(BaseModule):
             "blocks": [
                 {
                     "type": "news",
-                    "title": f"{region_label} · {' / '.join(t.replace('_', ' ') for t in topics)}",
+                    "title": f"{region_label} · {' / '.join(_topic_label(t) for t in topics)}",
                     "items": [
                         {
                             "title": row["title"],

@@ -33,6 +33,7 @@ def seed_assets() -> None:
     os.environ["DESKGADGET_DATA"] = str(data)
 
     root = bundle_root() / "server"
+    removed = data / "plugins_removed"
     for name in ("plugins", "templates"):
         src_root, dst_root = root / name, data / name
         if not src_root.exists():
@@ -42,6 +43,8 @@ def seed_assets() -> None:
             target = dst_root / item.name
             if target.exists():
                 continue  # never clobber a module the user edited
+            if name == "plugins" and (removed / item.name).exists():
+                continue  # the user removed this one on purpose
             if item.is_dir():
                 shutil.copytree(item, target)
             else:

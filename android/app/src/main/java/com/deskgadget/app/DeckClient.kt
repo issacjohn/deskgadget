@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,14 +92,19 @@ class DeckClient private constructor(private val app: Context) {
             _state.update { it.copy(status = ConnStatus.ERROR, error = "Enter the PC's address") }
             return
         }
-        prefs.host = clean
-        prefs.port = port
+        val wired = LocalLink.isWiredHost(clean)
+        // 127.0.0.1 is the adb reverse tunnel, not a transport of its own:
+        // remembering it as "the Wi-Fi address" would break the next launch
+        val loopback = clean == "127.0.0.1" || clean == "localhost"
+        if (!loopback) prefs.remember(clean, port, wired)
         target = wsUrl(clean, port)
         candidates.clear()
         candidates += target!!
-        prefs.lanHost.takeIf { it.isNotBlank() }?.let {
-            val url = wsUrl(it, prefs.lanPort)
-            if (url !in candidates) candidates += url
+        // the other transport, so pulling the cable (or losing Wi-Fi) still works
+        if (!loopback) {
+            prefs.saved(!wired)?.let { (h, p) ->
+                wsUrl(h, p).takeIf { it !in candidates }?.let { candidates += it }
+            }
         }
         val usb = wsUrl("127.0.0.1", port)
         if (usb !in candidates) candidates += usb
@@ -126,7 +130,22 @@ class DeckClient private constructor(private val app: Context) {
     }
 
     fun autoConnect() {
-        if (prefs.host.isNotBlank() && loopJob == null) connect(prefs.host, prefs.port)
+        if (loopJob != null) return
+        // a plugged-in cable wins: its subnet cannot be reached over Wi-Fi
+        val pick = (if (LocalLink.hasWired()) prefs.saved(true) else null)
+            ?: prefs.saved(false)
+            ?: prefs.host.takeIf { it.isNotBlank() }?.let { it to prefs.port }
+        if (pick != null) connect(pick.first, pick.second)
+    }
+
+    /** Ask the PC to open a URL in its browser, in front of whatever is running. */
+    fun openUrl(url: String): Boolean {
+        val live = socket ?: return false
+        val msg = JSONObject()
+            .put("v", 1)
+            .put("type", "open_url")
+            .put("url", url)
+        return runCatching { live.send(msg.toString()) }.isSuccess
     }
 
     fun disconnect() {
@@ -135,7 +154,17 @@ class DeckClient private constructor(private val app: Context) {
         loopJob = null
         socket?.close(1000, "bye")
         socket = null
-        _state.update { it.copy(status = ConnStatus.IDLE) }
+        // drop the pages too: otherwise the app stays on a dead deck with no
+        // way back. Clearing them returns the user to the connect screen.
+        _state.update {
+            it.copy(
+                status = ConnStatus.IDLE,
+                pages = emptyList(),
+                endpoint = "",
+                error = null,
+                toast = null,
+            )
+        }
     }
 
     private suspend fun runLoop() {
@@ -155,25 +184,36 @@ class DeckClient private constructor(private val app: Context) {
                 // every full lap, ask the network for the server in case its IP moved
                 val lap = (candidates.size * 2).coerceAtLeast(2)
                 if (attempt % lap == 0) {
-                    discover()?.let { (host, port) ->
-                        val found = wsUrl(host, port)
-                        if (found !in candidates) candidates += found
-                        active = candidates.indexOf(found)
-                        prefs.lanHost = host
-                        prefs.lanPort = port
-                        Log.i("DeckClient", "discovered server at $host:$port")
+                    val hits = discover()
+                    hits.forEach { (host, port, wired) ->
+                        val url = wsUrl(host, port)
+                        if (url !in candidates) candidates += url
+                        prefs.remember(host, port, wired)
+                        Log.i("DeckClient", "discovered server at $host:$port (wired=$wired)")
                     }
+                    // prefer a cable address when one is actually plugged in
+                    val preferWired = LocalLink.hasWired()
+                    val pick = hits.firstOrNull { !preferWired || it.third } ?: hits.firstOrNull()
+                    pick?.let { active = candidates.indexOf(wsUrl(it.first, it.second)) }
                 }
             }
             delay((700L * (attempt + 1)).coerceAtMost(5000L))
         }
     }
 
-    /** Races mDNS against the UDP beacon and takes whichever answers first. */
-    private suspend fun discover(): Pair<String, Int>? = coroutineScope {
-        val byMdns = async { mdnsProbe() }
-        val byUdp = async { withContext(Dispatchers.IO) { UdpDiscovery.probe(prefs.port) } }
-        awaitAll(byMdns, byUdp).firstOrNull { it != null }
+    /** Races mDNS against the UDP beacon and merges every address that answered. */
+    private suspend fun discover(): List<Triple<String, Int, Boolean>> = coroutineScope {
+        val byMdns = async {
+            mdnsProbe()?.let { (host, port) ->
+                listOf(Triple(host, port, LocalLink.isWiredHost(host)))
+            } ?: emptyList()
+        }
+        val byUdp = async {
+            withContext(Dispatchers.IO) {
+                UdpDiscovery.probe(prefs.port).map { Triple(it.host, it.port, it.wired) }
+            }
+        }
+        (byMdns.await() + byUdp.await()).distinctBy { it.first to it.second }
     }
 
     private suspend fun mdnsProbe(): Pair<String, Int>? {
@@ -256,13 +296,19 @@ class DeckClient private constructor(private val app: Context) {
                     val srv = msg.optJSONObject("server")
                     val name = srv?.optString("name").orEmpty()
                     val pages = parsePages(msg.optJSONArray("pages"))
-                    // remember the PC's LAN address so a pulled cable can fall back to Wi-Fi
-                    val lanIp = srv?.optString("lan_ip").orEmpty()
-                    if (lanIp.isNotBlank()) {
-                        val lanPort = srv?.optInt("port", prefs.port) ?: prefs.port
-                        prefs.lanHost = lanIp
-                        prefs.lanPort = lanPort
-                        val url = wsUrl(lanIp, lanPort)
+                    // remember every address the PC has: the LAN one for Wi-Fi,
+                    // the tether one when the phone is on the cable
+                    val lanPort = srv?.optInt("port", prefs.port) ?: prefs.port
+                    val lanHosts = LinkedHashSet<String>()
+                    srv?.optString("lan_ip").orEmpty().takeIf { it.isNotBlank() }?.let { lanHosts += it }
+                    srv?.optJSONArray("lan_ips")?.let { arr ->
+                        for (i in 0 until arr.length()) {
+                            arr.optString(i).takeIf { it.isNotBlank() }?.let { lanHosts += it }
+                        }
+                    }
+                    lanHosts.forEach { host ->
+                        prefs.remember(host, lanPort, LocalLink.isWiredHost(host))
+                        val url = wsUrl(host, lanPort)
                         if (url !in candidates) candidates += url
                     }
                     _state.update {

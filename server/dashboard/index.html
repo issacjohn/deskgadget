@@ -153,6 +153,16 @@
   .approw img{width:26px;height:26px;object-fit:contain}
   .approw .nm{font-size:13px}
 
+  /* module catalogue */
+  .catrow{display:flex;align-items:center;gap:11px;padding:10px 0;
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .catrow:last-child{border-bottom:none}
+  .catdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .catmain{flex:1;min-width:0}
+  .cattitle{font-size:13px;color:var(--ink)}
+  .catver{font-size:10px;color:var(--muted);margin-left:4px}
+  .catsub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
   /* drop zone */
   .drop{border:1.5px dashed rgba(255,255,255,.22);border-radius:18px;padding:22px;text-align:center;
     color:var(--muted);font-size:13px;transition:.2s;cursor:pointer}
@@ -203,6 +213,7 @@
       </div>
       <div class="row">
         <button class="ghost" id="rescan">Rescan plugins</button>
+        <button class="ghost" onclick="openCatalog()">Browse modules</button>
         <button class="ghost" onclick="location.href='/api/template'">Download starter module</button>
         <button class="ghost" onclick="window.open('/docs/plugins','_blank')">Plugin docs</button>
       </div>
@@ -219,6 +230,18 @@
     </div>
     <input type="text" id="search" placeholder="Search installed apps…" style="margin-top:12px" />
     <div class="applist" id="applist"></div>
+  </div>
+</div>
+
+<div class="modal" id="catalogModal">
+  <div class="sheet glass" style="max-width:560px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px">Modules</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="catclose">Close</button>
+    </div>
+    <p class="hint" id="catnote" style="margin:8px 0 4px"></p>
+    <div id="catlist" class="applist"></div>
   </div>
 </div>
 
@@ -568,6 +591,63 @@ async function refresh(){
   state = await api('/api/state');
   render();
 }
+
+/* ---------------- module catalogue ---------------- */
+async function openCatalog(){
+  const modal = $('#catalogModal');
+  modal.classList.add('show');
+  const box = $('#catlist');
+  box.innerHTML = '<p class="hint">Loading modules…</p>';
+  try {
+    const res = await fetch('/api/catalog');
+    const data = await res.json();
+    $('#catnote').textContent = data.source === 'github'
+      ? 'Everything available, from GitHub. Removed modules can be added back.'
+      : 'Local catalogue — GitHub was unreachable.';
+    box.innerHTML = (data.modules || []).map(m => `
+      <div class="catrow">
+        <span class="catdot" style="background:${esc(m.accent || '#7CE7FF')}"></span>
+        <div class="catmain">
+          <div class="cattitle">${esc(m.name || m.id)}
+            <span class="catver">v${esc(m.version || '')}</span></div>
+          <div class="catsub">${esc(m.description || '')}</div>
+        </div>
+        ${m.installed
+          ? `<button class="ghost danger" data-remove="${esc(m.id)}">Remove</button>`
+          : `<button class="ghost" data-add="${esc(m.id)}">Add</button>`}
+      </div>`).join('') || '<p class="hint">No modules found.</p>';
+  } catch (e) {
+    box.innerHTML = '<p class="hint">Could not load the catalogue.</p>';
+  }
+}
+
+$('#catclose').onclick = () => $('#catalogModal').classList.remove('show');
+$('#catalogModal').addEventListener('click', e => {
+  if (e.target.id === 'catalogModal') e.target.classList.remove('show');
+});
+$('#catlist').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-add],[data-remove]');
+  if (!btn) return;
+  const add = btn.dataset.add;
+  const remove = btn.dataset.remove;
+  btn.disabled = true;
+  btn.textContent = add ? 'Adding…' : 'Removing…';
+  try {
+    const url = add
+      ? `/api/modules/${add}/install_from_catalog`
+      : `/api/modules/${remove}/remove`;
+    const res = await fetch(url, { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'failed');
+    toast(add ? 'Module added' : 'Module removed');
+    await refresh();
+    openCatalog();
+  } catch (err) {
+    toast(String(err.message || 'Failed'));
+    btn.disabled = false;
+    btn.textContent = add ? 'Add' : 'Remove';
+  }
+});
 
 document.addEventListener('click', (e)=>{
   if(!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(x=>x.classList.remove('open'));

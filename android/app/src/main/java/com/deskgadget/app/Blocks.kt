@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
@@ -51,6 +52,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -58,6 +60,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,6 +103,12 @@ fun BlockView(
         "controls" -> ControlsCard(block, accent) { id -> onAction(id, null) }
         "slider" -> SliderCard(block, accent) { id, value ->
             onAction(id, JSONObject().put("value", value))
+        }
+        "nowplaying" -> NowPlayingCard(block, accent) { seconds ->
+            onAction(block.str("action"), JSONObject().put("value", seconds))
+        }
+        "textinput" -> TextInputCard(block, accent) { action, text ->
+            onAction(action, JSONObject().put("text", text))
         }
         "shortcuts" -> ShortcutsCard(block, accent, endpoint) { id ->
             onAction("launch", JSONObject().put("id", id))
@@ -436,7 +446,9 @@ private fun ListCard(
                             Modifier.clickable {
                                 onAction(
                                     item.optString("action"),
-                                    JSONObject().put("url", item.optString("url")),
+                                    JSONObject()
+                                        .put("url", item.optString("url"))
+                                        .put("id", item.optString("id")),
                                 )
                             }
                         } else {
@@ -815,8 +827,171 @@ private fun SliderCard(
 
 /** Track + thumb used by the slider block and by hero cards that carry a control. */
 @Composable
-private fun InlineSlider(
-    initial: Float,
+private fun TextInputCard(
+    block: JSONObject,
+    accent: Color,
+    onSend: (String, String) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    val action = block.str("action")
+    val ready = text.isNotBlank()
+
+    GlassPanel(
+        Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Text(
+            block.str("label").uppercase().ifBlank { "SEND TEXT" },
+            color = Muted,
+            fontSize = 10.sp,
+            letterSpacing = 2.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0x33000000))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                textStyle = TextStyle(color = Ink, fontSize = 13.sp),
+                cursorBrush = SolidColor(accent),
+                maxLines = 3,
+                decorationBox = { inner ->
+                    if (text.isEmpty()) {
+                        Text(
+                            block.str("placeholder").ifBlank { "Type here…" },
+                            color = Faint,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    inner()
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (ready) accent else Color(0x14FFFFFF))
+                .clickable(enabled = ready) {
+                    onSend(action, text)
+                    text = ""
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                block.str("button").ifBlank { "Send" },
+                color = if (ready) Color(0xFF06121A) else Faint,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+/** Track + thumb used by the slider block and by hero cards that carry a control. */
+@Composable
+private fun NowPlayingCard(
+    block: JSONObject,
+    accent: Color,
+    onSeek: (Int) -> Unit,
+) {
+    val duration = block.num("duration", 0.0).toFloat()
+    val position = block.num("position", 0.0).toFloat()
+    val artwork = block.str("artwork")
+
+    GlassPanel(
+        Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0x14FFFFFF)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (artwork.isNotBlank()) {
+                    AsyncImage(
+                        model = artwork,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = accent.copy(alpha = 0.85f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    block.str("title"),
+                    color = Ink,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val artist = block.str("artist")
+                if (artist.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        artist,
+                        color = Muted,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val source = block.str("source")
+                if (source.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        source.uppercase(),
+                        color = accent.copy(alpha = 0.9f),
+                        fontSize = 8.5.sp,
+                        letterSpacing = 1.4.sp,
+                    )
+                }
+            }
+        }
+        if (duration > 0f) {
+            Spacer(Modifier.height(12.dp))
+            InlineSlider(
+                initial = position,
+                minV = 0f,
+                maxV = duration,
+                accent = accent,
+            ) { v -> onSeek(v) }
+            Row(Modifier.fillMaxWidth()) {
+                Text(fmtTime(position), color = Faint, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                Text(fmtTime(duration), color = Faint, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+private fun fmtTime(seconds: Float): String {
+    val total = seconds.toInt().coerceAtLeast(0)
+    return "%d:%02d".format(total / 60, total % 60)
+}
+
+/** Track + thumb used by the slider block and by hero cards that carry a control. */
+@Composable
+private fun InlineSlider(    initial: Float,
     minV: Float,
     maxV: Float,
     accent: Color,

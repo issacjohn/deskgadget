@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "id": "audiomesh",
+      "name": "AudioMesh",
+      "description": "See and control AudioMesh routing on this PC.",
+      "version": "0.1.0",
+      "author": "Isaac",
+      "accent": "#4C8DFF",
+      "path": "server/plugins/audiomesh",
+      "builtin": true
+    },
+    {
+      "id": "battery",
+      "name": "Battery",
+      "description": "Battery or UPS state for the machine on your desk.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#FFD166",
+      "path": "server/plugins/battery",
+      "builtin": true
+    },
+    {
+      "id": "clipboard",
+      "name": "Clipboard",
+      "description": "See what is on the PC clipboard and send text back to it from the phone.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#C4B5FF",
+      "path": "server/plugins/clipboard",
+      "builtin": true
+    },
+    {
+      "id": "drives",
+      "name": "Drives",
+      "description": "Space on every fixed volume.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#FFD166",
+      "path": "server/plugins/drives",
+      "builtin": true
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "description": "Control this PC's volume and media playback from the phone.",
+      "version": "1.1.0",
+      "author": "LiquidDeck",
+      "accent": "#FF7AB6",
+      "path": "server/plugins/media",
+      "builtin": true
+    },
+    {
+      "id": "network",
+      "name": "Network",
+      "description": "Public and LAN addresses, latency and current throughput.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#7CE7FF",
+      "path": "server/plugins/network",
+      "builtin": true
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "description": "Headlines for the region and topics you pick. Tapping one opens it in your PC's browser.",
+      "version": "1.2.0",
+      "author": "DESKGadget",
+      "accent": "#FFB86B",
+      "path": "server/plugins/news",
+      "builtin": true
+    },
+    {
+      "id": "quick",
+      "name": "Quick",
+      "description": "Lock the PC, turn the screen off, show the desktop, grab a screenshot.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#8CE99A",
+      "path": "server/plugins/quick",
+      "builtin": true
+    },
+    {
+      "id": "shortcuts",
+      "name": "Shortcuts",
+      "description": "Launch apps on this PC. Icons are pulled from the apps automatically.",
+      "version": "1.0.0",
+      "author": "LiquidDeck",
+      "accent": "#B69CFF",
+      "path": "server/plugins/shortcuts",
+      "builtin": true
+    },
+    {
+      "id": "system",
+      "name": "System",
+      "description": "Live CPU, memory, disk and network usage from this PC.",
+      "version": "1.0.0",
+      "author": "LiquidDeck",
+      "accent": "#6EE7FF",
+      "path": "server/plugins/system",
+      "builtin": true
+    },
+    {
+      "id": "timer",
+      "name": "Timer",
+      "description": "Countdown or Pomodoro timer, started from the phone.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#B69CFF",
+      "path": "server/plugins/timer",
+      "builtin": true
+    },
+    {
+      "id": "weather",
+      "name": "Weather",
+      "description": "Current conditions and 7-day forecast from Open-Meteo. No API key required.",
+      "version": "1.0.0",
+      "author": "LiquidDeck",
+      "accent": "#8BE9FD",
+      "path": "server/plugins/weather",
+      "builtin": true
+    },
+    {
+      "id": "windows",
+      "name": "Windows",
+      "description": "Every open window on the PC. Tap one to bring it forward, or send it to the taskbar.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#9BE7FF",
+      "path": "server/plugins/windows",
+      "builtin": true
+    },
+    {
+      "id": "wol",
+      "name": "Wake on LAN",
+      "description": "Wake other machines on your network from the panel. One magic packet per tap.",
+      "version": "1.0.0",
+      "author": "DESKGadget",
+      "accent": "#9BFFC4",
+      "path": "server/plugins/wol",
+      "builtin": true
+    }
+  ]
+}

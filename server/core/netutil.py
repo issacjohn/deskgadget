@@ -29,6 +29,35 @@ def lan_ip() -> str:
         s.close()
 
 
+def lan_ips() -> list[str]:
+    """Every usable IPv4 address, primary first.
+
+    A phone on USB tethering sits on its own subnet and can only reach the
+    address of the adapter on that link, while a PC with both Wi-Fi and
+    Ethernet has two perfectly good addresses. Advertise them all so the
+    client can try whichever one it can actually route to.
+    """
+    ordered: list[str] = []
+    primary = lan_ip()
+    if primary and primary != "127.0.0.1":
+        ordered.append(primary)
+    try:
+        import psutil
+
+        for addrs in psutil.net_if_addrs().values():
+            for addr in addrs:
+                if (
+                    addr.family == socket.AF_INET
+                    and addr.address
+                    and not addr.address.startswith(("127.", "169.254."))
+                    and addr.address not in ordered
+                ):
+                    ordered.append(addr.address)
+    except Exception:
+        pass
+    return ordered or ["127.0.0.1"]
+
+
 class Discovery:
     """Advertise the server over mDNS so the phone can find it automatically."""
 
@@ -47,18 +76,18 @@ class Discovery:
 
         def register() -> None:
             try:
-                ip = lan_ip()
+                ips = lan_ips()
                 self._info = ServiceInfo(
                     SERVICE_TYPE,
                     f"{self.name}.{SERVICE_TYPE}",
-                    addresses=[socket.inet_aton(ip)],
+                    addresses=[socket.inet_aton(ip) for ip in ips],
                     port=self.port,
                     properties={"v": "1", "name": self.name},
                     server=f"{socket.gethostname().lower()}.local.",
                 )
                 self._zc = Zeroconf()
                 self._zc.register_service(self._info)
-                log.info("mDNS advertising %s on %s:%s", self.name, ip, self.port)
+                log.info("mDNS advertising %s on %s:%s", self.name, ", ".join(ips), self.port)
             except Exception:
                 log.exception("mDNS registration failed")
 
@@ -109,7 +138,12 @@ class Beacon(threading.Thread):
                 continue
             try:
                 reply = json.dumps(
-                    {"name": self.server_name, "ip": lan_ip(), "port": self.port}
+                    {
+                        "name": self.server_name,
+                        "ip": lan_ip(),
+                        "ips": lan_ips(),
+                        "port": self.port,
+                    }
                 ).encode("utf-8")
                 sock.sendto(reply, addr)
             except Exception:

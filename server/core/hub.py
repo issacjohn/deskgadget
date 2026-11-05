@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 from .base import PROTOCOL_VERSION
-from .netutil import lan_ip
+from .netutil import lan_ip, lan_ips
 
 log = logging.getLogger("liquiddeck.hub")
 
@@ -144,6 +144,7 @@ class Hub:
                 "name": self.server_name,
                 "version": self.version,
                 "lan_ip": lan_ip(),
+                "lan_ips": lan_ips(),
                 "port": self.port,
             },
             "theme": dev.get("theme", "liquid"),
