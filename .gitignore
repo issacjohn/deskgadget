@@ -38,3 +38,7 @@ website/
 .DS_Store
 Thumbs.db
 *.log
+
+# runtime media artwork (written by the media module)
+server/artwork/
+artwork/
