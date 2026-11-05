@@ -6,7 +6,7 @@ import logging
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.quick")
+log = logging.getLogger("deskgadget.quick")
 
 VK_LWIN = 0x5B
 VK_SHIFT = 0x10

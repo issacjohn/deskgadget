@@ -6,7 +6,7 @@ import logging
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.clipboard")
+log = logging.getLogger("deskgadget.clipboard")
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32

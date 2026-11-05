@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-log = logging.getLogger("liquiddeck.steam")
+log = logging.getLogger("deskgadget.steam")
 
 # runtimes and redistributables that are not games
 SKIP_APPIDS = {

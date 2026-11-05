@@ -2,7 +2,7 @@
   "id": "wol",
   "name": "Wake on LAN",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Wake other machines on your network from the panel. One magic packet per tap.",
   "accent": "#9BFFC4",
   "interval": 30.0,

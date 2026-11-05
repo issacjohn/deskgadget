@@ -2,7 +2,7 @@
   "id": "news",
   "name": "News",
   "version": "1.2.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Headlines for the region and topics you pick. Tapping one opens it in your PC's browser.",
   "accent": "#FFB86B",
   "interval": 300.0,

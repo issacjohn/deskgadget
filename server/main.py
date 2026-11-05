@@ -1,4 +1,4 @@
-"""LiquidDeck server entrypoint.
+"""DeskGadget server entrypoint.
 
 FastAPI app that hosts:
   * the WebSocket channel the Android client talks to  (/ws)
@@ -38,7 +38,7 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-7s %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("liquiddeck")
+log = logging.getLogger("deskgadget")
 
 try:  # keep a log next to the user's data so the EXE is debuggable
     from .core.paths import state_dir as _state_dir
@@ -53,7 +53,7 @@ except Exception:
 
 BASE = Path(__file__).resolve().parent
 store = Store()
-hub = Hub(store, {}, store.data.get("server_name", "LiquidDeck"), PORT)
+hub = Hub(store, {}, store.data.get("server_name", "DeskGadget"), PORT)
 discovery = Discovery(PORT, hub.server_name)
 beacon = Beacon(PORT, hub.server_name)
 adb = AdbBridge(PORT)
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
     adb.start()
     state_task = asyncio.create_task(_dashboard_loop(), name="dashboard-state")
     reaper_task = asyncio.create_task(_reaper_loop(), name="reaper")
-    log.info("LiquidDeck ready on http://%s:%s", lan_ip(), PORT)
+    log.info("DeskGadget ready on http://%s:%s", lan_ip(), PORT)
     log.info("dashboard  -> http://localhost:%s", PORT)
     yield
     state_task.cancel()
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
     discovery.stop()
 
 
-app = FastAPI(title="LiquidDeck", lifespan=lifespan)
+app = FastAPI(title="DeskGadget", lifespan=lifespan)
 
 
 # --------------------------------------------------------------------------
@@ -487,7 +487,7 @@ async def api_catalog():
             requests.get,
             CATALOG_URL,
             timeout=8,
-            headers={"User-Agent": "DESKGadget"},
+            headers={"User-Agent": "DeskGadget"},
         )
         response.raise_for_status()
         for item in response.json().get("modules", []):
@@ -561,7 +561,7 @@ async def api_install_from_catalog(module_id: str):
                     requests.get,
                     url,
                     timeout=12,
-                    headers={"User-Agent": "DESKGadget"},
+                    headers={"User-Agent": "DeskGadget"},
                 )
                 response.raise_for_status()
                 (target / name).write_bytes(response.content)
@@ -625,7 +625,7 @@ async def plugin_docs():
     path = Path(__file__).resolve().parent / "PLUGINS.md"
     text = path.read_text(encoding="utf-8") if path.exists() else "PLUGINS.md not found"
     html = (
-        "<!doctype html><meta charset='utf-8'><title>LiquidDeck plugins</title>"
+        "<!doctype html><meta charset='utf-8'><title>DeskGadget plugins</title>"
         "<style>body{background:#05070C;color:#E8EEF8;font:15px/1.65 system-ui;max-width:860px;"
         "margin:0 auto;padding:48px 24px}pre{background:rgba(255,255,255,.06);padding:16px;"
         "border-radius:12px;overflow:auto}code{background:rgba(255,255,255,.08);padding:2px 6px;"
@@ -649,7 +649,7 @@ async def api_template():
     return Response(
         buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="liquiddeck-module.zip"'},
+        headers={"Content-Disposition": 'attachment; filename="deskgadget-module.zip"'},
     )
 
 

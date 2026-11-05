@@ -2,7 +2,7 @@
   "id": "timer",
   "name": "Timer",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Countdown or Pomodoro timer, started from the phone.",
   "accent": "#B69CFF",
   "interval": 1.0,

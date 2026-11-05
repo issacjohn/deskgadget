@@ -2,7 +2,7 @@
   "id": "media",
   "name": "Media",
   "version": "1.1.0",
-  "author": "LiquidDeck",
+  "author": "DeskGadget",
   "description": "Control this PC's volume and media playback from the phone.",
   "accent": "#FF7AB6",
   "interval": 2.0,

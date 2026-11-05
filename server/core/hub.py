@@ -11,7 +11,7 @@ from typing import Any
 from .base import PROTOCOL_VERSION
 from .netutil import lan_ip, lan_ips
 
-log = logging.getLogger("liquiddeck.hub")
+log = logging.getLogger("deskgadget.hub")
 
 
 class Conn:

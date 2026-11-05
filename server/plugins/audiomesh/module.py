@@ -1,4 +1,4 @@
-﻿"""AudioMesh module for LiquidDeck / DeskGadget.
+﻿"""AudioMesh module for DeskGadget / DeskGadget.
 
 Phase 1 (this file) works without touching AudioMesh:
 
@@ -34,7 +34,7 @@ import psutil
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.audiomesh")
+log = logging.getLogger("deskgadget.audiomesh")
 
 DEFAULT_APP = r"C:\Program Files\AudioMesh\AudioMesh.exe"
 DEFAULT_PORT = 47823

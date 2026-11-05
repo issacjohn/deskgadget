@@ -1,4 +1,4 @@
-"""Minimal LiquidDeck module.
+"""Minimal DeskGadget module.
 
 A module is two files:
   manifest.json  - id, name, accent colour, update interval, settings schema

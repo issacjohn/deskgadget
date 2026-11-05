@@ -13,7 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
-log = logging.getLogger("liquiddeck.smtc")
+log = logging.getLogger("deskgadget.smtc")
 
 _PLAYING = 4  # GlobalSystemMediaTransportControlsSessionPlaybackStatus.PLAYING
 

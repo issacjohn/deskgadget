@@ -12,7 +12,7 @@ from core import steam
 from core.base import Module as BaseModule
 from core.launcher import launch, register_icon_source, register_icon_url
 
-log = logging.getLogger("liquiddeck.shortcuts")
+log = logging.getLogger("deskgadget.shortcuts")
 
 RESCAN_SECONDS = 300
 

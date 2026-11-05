@@ -6,7 +6,7 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Log
 
-/** Finds `_liquiddeck._tcp.` servers on the local network. */
+/** Finds `_deskgadget._tcp.` servers on the local network. */
 class LanDiscovery(context: Context) {
 
     data class Found(val name: String, val host: String, val port: Int)
@@ -33,7 +33,7 @@ class LanDiscovery(context: Context) {
             override fun onDiscoveryStarted(serviceType: String) {}
 
             override fun onServiceFound(info: NsdServiceInfo) {
-                if (info.serviceType != "_liquiddeck._tcp." || resolving.contains(info.serviceName)) return
+                if (info.serviceType != "_deskgadget._tcp." || resolving.contains(info.serviceName)) return
                 resolving.add(info.serviceName)
                 resolve(info, onFound) { resolving.remove(info.serviceName) }
             }
@@ -53,7 +53,7 @@ class LanDiscovery(context: Context) {
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
         }
         listener = cb
-        runCatching { nsd.discoverServices("_liquiddeck._tcp.", NsdManager.PROTOCOL_DNS_SD, cb) }
+        runCatching { nsd.discoverServices("_deskgadget._tcp.", NsdManager.PROTOCOL_DNS_SD, cb) }
             .onFailure { listener = null }
     }
 

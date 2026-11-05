@@ -7,7 +7,7 @@ import psutil
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.battery")
+log = logging.getLogger("deskgadget.battery")
 
 
 def _minutes(seconds) -> str:

@@ -2,7 +2,7 @@
   "id": "drives",
   "name": "Drives",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Space on every fixed volume.",
   "accent": "#FFD166",
   "interval": 30.0,

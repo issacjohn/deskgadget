@@ -17,7 +17,7 @@ import requests
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.news")
+log = logging.getLogger("deskgadget.news")
 
 SUFFIX = re.compile(r"\s+(?:-\s+[^-]{2,40}|By\s+[^-]{2,40})$")
 
@@ -277,7 +277,7 @@ class Module(BaseModule):
                     response = requests.get(
                         url,
                         timeout=12,
-                        headers={"User-Agent": "Mozilla/5.0 (DESKGadget)"},
+                        headers={"User-Agent": "Mozilla/5.0 (DeskGadget)"},
                     )
                     response.raise_for_status()
                     root = ET.fromstring(response.content)

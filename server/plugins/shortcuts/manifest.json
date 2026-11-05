@@ -2,7 +2,7 @@
   "id": "shortcuts",
   "name": "Shortcuts",
   "version": "1.0.0",
-  "author": "LiquidDeck",
+  "author": "DeskGadget",
   "description": "Launch apps on this PC. Icons are pulled from the apps automatically.",
   "accent": "#B69CFF",
   "interval": 30.0,

@@ -219,7 +219,7 @@ fun ConnectScreen(
 @Composable
 private fun BrandBlock() {
     Text(
-        "DESKGADGET",
+        "DeskGadget",
         color = Ink,
         fontSize = 26.sp,
         fontWeight = FontWeight.SemiBold,
@@ -262,7 +262,7 @@ private fun ConnectCard(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Start the DESKGadget server on Windows. Same Wi-Fi finds it automatically. "
+            "Start the DeskGadget server on Windows. Same Wi-Fi finds it automatically. "
                 + "For a cable, turn on USB tethering - no USB debugging needed - and the PC "
                 + "appears here over USB too.",
             color = Muted,
@@ -319,7 +319,7 @@ private fun ConnectCard(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    if (scanning) "Looking for DESKGadget on your network…"
+                    if (scanning) "Looking for DeskGadget on your network…"
                     else "No server found automatically — enter the address below.",
                     color = Faint,
                     fontSize = 12.sp,
@@ -599,7 +599,7 @@ private fun SupportSheet(
                     .background(Color(0x33FFFFFF))
             )
             Spacer(Modifier.height(10.dp))
-            Text("DESKGadget", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("DeskGadget", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(2.dp))
             Text("Your PC, one swipe away.", color = Faint, fontSize = 11.sp)
             Spacer(Modifier.height(14.dp))

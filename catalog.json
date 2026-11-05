@@ -16,7 +16,7 @@
       "name": "Battery",
       "description": "Battery or UPS state for the machine on your desk.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#FFD166",
       "path": "server/plugins/battery",
       "builtin": true
@@ -26,7 +26,7 @@
       "name": "Clipboard",
       "description": "See what is on the PC clipboard and send text back to it from the phone.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#C4B5FF",
       "path": "server/plugins/clipboard",
       "builtin": true
@@ -36,7 +36,7 @@
       "name": "Drives",
       "description": "Space on every fixed volume.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#FFD166",
       "path": "server/plugins/drives",
       "builtin": true
@@ -46,7 +46,7 @@
       "name": "Media",
       "description": "Control this PC's volume and media playback from the phone.",
       "version": "1.1.0",
-      "author": "LiquidDeck",
+      "author": "DeskGadget",
       "accent": "#FF7AB6",
       "path": "server/plugins/media",
       "builtin": true
@@ -56,7 +56,7 @@
       "name": "Network",
       "description": "Public and LAN addresses, latency and current throughput.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#7CE7FF",
       "path": "server/plugins/network",
       "builtin": true
@@ -66,7 +66,7 @@
       "name": "News",
       "description": "Headlines for the region and topics you pick. Tapping one opens it in your PC's browser.",
       "version": "1.2.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#FFB86B",
       "path": "server/plugins/news",
       "builtin": true
@@ -76,7 +76,7 @@
       "name": "Quick",
       "description": "Lock the PC, turn the screen off, show the desktop, grab a screenshot.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#8CE99A",
       "path": "server/plugins/quick",
       "builtin": true
@@ -86,7 +86,7 @@
       "name": "Shortcuts",
       "description": "Launch apps on this PC. Icons are pulled from the apps automatically.",
       "version": "1.0.0",
-      "author": "LiquidDeck",
+      "author": "DeskGadget",
       "accent": "#B69CFF",
       "path": "server/plugins/shortcuts",
       "builtin": true
@@ -96,7 +96,7 @@
       "name": "System",
       "description": "Live CPU, memory, disk and network usage from this PC.",
       "version": "1.0.0",
-      "author": "LiquidDeck",
+      "author": "DeskGadget",
       "accent": "#6EE7FF",
       "path": "server/plugins/system",
       "builtin": true
@@ -106,7 +106,7 @@
       "name": "Timer",
       "description": "Countdown or Pomodoro timer, started from the phone.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#B69CFF",
       "path": "server/plugins/timer",
       "builtin": true
@@ -116,7 +116,7 @@
       "name": "Weather",
       "description": "Current conditions and 7-day forecast from Open-Meteo. No API key required.",
       "version": "1.0.0",
-      "author": "LiquidDeck",
+      "author": "DeskGadget",
       "accent": "#8BE9FD",
       "path": "server/plugins/weather",
       "builtin": true
@@ -126,7 +126,7 @@
       "name": "Windows",
       "description": "Every open window on the PC. Tap one to bring it forward, or send it to the taskbar.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#9BE7FF",
       "path": "server/plugins/windows",
       "builtin": true
@@ -136,7 +136,7 @@
       "name": "Wake on LAN",
       "description": "Wake other machines on your network from the panel. One magic packet per tap.",
       "version": "1.0.0",
-      "author": "DESKGadget",
+      "author": "DeskGadget",
       "accent": "#9BFFC4",
       "path": "server/plugins/wol",
       "builtin": true

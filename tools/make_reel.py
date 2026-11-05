@@ -21,7 +21,7 @@ FONT_BOLD = r"C\:/Windows/Fonts/segoeuib.ttf"
 
 # (start, end, caption, sub-caption)
 CAPTIONS = [
-    (0.0, 7.2, "DESKGADGET", "That old device just got an upgrade"),
+    (0.0, 7.2, "DeskGadget", "That old device just got an upgrade"),
     (7.2, 13.6, "System", "Your PC stats. Live."),
     (13.6, 19.3, "Media", "Music, volume, mics. All in control."),
     (19.3, 24.6, "Shortcuts", "One tap. Apps and games."),
@@ -29,7 +29,7 @@ CAPTIONS = [
     (30.5, 35.0, "Weather", "Right now. What comes next."),
     (35.0, 43.0, "Not just a dashboard", "Switch, share, wake, monitor."),
     (43.0, 49.2, "Make it yours", "Custom modules. Endless possibilities."),
-    (49.2, 55.5, "DESKGADGET", "Windows + Android. 100% free."),
+    (49.2, 55.5, "DeskGadget", "Windows + Android. 100% free."),
 ]
 
 
@@ -52,7 +52,7 @@ def build(raw: Path, out: Path) -> None:
         filters.append(drawtext(sub, 1330, 34, FONT, "#9AA6BA", start, end))
 
     filters += [
-        drawtext("DESKGADGET", 1450, 24, FONT_BOLD, "#7CE7FF", 0.0, 55.5),
+        drawtext("DeskGadget", 1450, 24, FONT_BOLD, "#7CE7FF", 0.0, 55.5),
         "fade=t=in:st=0:d=0.4",
         "fade=t=out:st=54.4:d=0.8",
     ]

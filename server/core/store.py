@@ -17,7 +17,7 @@ class Store:
         self._lock = threading.RLock()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.data: dict[str, Any] = {
-            "server_name": "DESKGadget",
+            "server_name": "DeskGadget",
             "devices": {},
             "module_settings": {},
             "module_enabled": {},
@@ -31,8 +31,8 @@ class Store:
             except Exception:
                 pass
         # the product was renamed; migrate the old default name
-        if self.data.get("server_name") in (None, "", "LiquidDeck"):
-            self.data["server_name"] = "DESKGadget"
+        if self.data.get("server_name") in (None, "", "DeskGadget"):
+            self.data["server_name"] = "DeskGadget"
         self.save()
 
     def save(self) -> None:

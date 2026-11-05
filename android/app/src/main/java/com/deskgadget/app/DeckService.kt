@@ -35,7 +35,7 @@ class DeckService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification: Notification = Notification.Builder(this, CHANNEL)
-            .setContentTitle("DESKGadget")
+            .setContentTitle("DeskGadget")
             .setContentText("Connected to your PC")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(open)

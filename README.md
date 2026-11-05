@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/screenshots/icon.png" width="96" alt="DESKGadget" />
+<img src="docs/screenshots/icon.png" width="96" alt="DeskGadget" />
 
-# DESKGadget
+# DeskGadget
 
 **A liquid-glass control panel for your Windows PC — one page per module, on a phone you already own.**
 
@@ -11,7 +11,7 @@ Windows server · Android client · plugins anyone can write
 </div>
 
 > **Built to be better than DeskThing.** DeskThing proved the idea: a small screen
-> on your desk showing your PC. DESKGadget takes the same idea and removes the
+> on your desk showing your PC. DeskGadget takes the same idea and removes the
 > two things that hold it back — you never rebuild the app to add a module, and
 > you choose exactly which modules each device sees. Everything is declarative
 > data over one WebSocket, so a new plugin is a folder on the PC.
@@ -20,7 +20,7 @@ Windows server · Android client · plugins anyone can write
 
 ## Screenshots
 
-![DESKGadget on a desk](docs/screenshots/desk.jpg)
+![DeskGadget on a desk](docs/screenshots/desk.jpg)
 
 
 | Home — every module at a glance | Media — now playing, volume, mics |
@@ -47,7 +47,7 @@ Windows server · Android client · plugins anyone can write
 
 ## Why another one?
 
-| | DeskThing | DESKGadget |
+| | DeskThing | DeskGadget |
 |---|---|---|
 | Adding a module | ships code for the client | **declarative blocks, no app rebuild** |
 | Module choice | one layout for all devices | **per-device tick list + drag order** |
@@ -113,12 +113,12 @@ app update, which is the whole point.
 
 ## Install
 
-**Windows** — run `DESKGadget-Setup.exe` from [Releases](../../releases). It installs
-to `%LOCALAPPDATA%\DESKGadget`, adds Desktop and Start Menu shortcuts, and starts
+**Windows** — run `DeskGadget-Setup.exe` from [Releases](../../releases). It installs
+to `%LOCALAPPDATA%\DeskGadget`, adds Desktop and Start Menu shortcuts, and starts
 the dashboard. No admin rights, **no Python required** (the interpreter and `adb`
 are bundled).
 
-**Android** — install `DESKGadget.apk` from Releases. It finds the server over
+**Android** — install `DeskGadget.apk` from Releases. It finds the server over
 mDNS, over the UDP beacon, or over USB, and reconnects to whichever route is up.
 Three transports work, and each remembers its own address:
 
@@ -171,7 +171,7 @@ cd android && gradle assembleDebug
 
 # windows installer (Python 3.11+, PyInstaller)
 powershell packaging/fetch_adb.ps1
-python packaging/build_exe.py     # dist/DESKGadget-Setup.exe
+python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 ```
 
 ## Roadmap

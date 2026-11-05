@@ -2,7 +2,7 @@
   "id": "quick",
   "name": "Quick",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Lock the PC, turn the screen off, show the desktop, grab a screenshot.",
   "accent": "#8CE99A",
   "interval": 30.0,

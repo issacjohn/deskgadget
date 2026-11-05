@@ -1,6 +1,6 @@
 # Connecting the phone to the PC
 
-DESKGadget supports three routes. All of them end at the same WebSocket
+DeskGadget supports three routes. All of them end at the same WebSocket
 (`/ws`) on TCP port `8787`; the phone picks whichever one is available and
 reconnects automatically when it changes.
 
@@ -17,13 +17,13 @@ leaving the Wi-Fi network never leaves it pointed at a dead address.
 
 ## Wi-Fi
 
-1. Start DESKGadget on the PC. The dashboard prints the address, e.g.
+1. Start DeskGadget on the PC. The dashboard prints the address, e.g.
    `http://192.168.0.250:8787`.
 2. Put the phone on the same network.
 3. Open the app. The PC appears in the list within a second or two; tap it, or
    let it connect on its own when it is the only server found.
 
-Discovery works two ways at once — mDNS (`_liquiddeck._tcp`) and a UDP probe on
+Discovery works two ways at once — mDNS (`_deskgadget._tcp`) and a UDP probe on
 port `8787`. If a router blocks one, the other usually still answers.
 
 **If nothing appears:**
@@ -105,5 +105,5 @@ it says `unauthorized`, accept the prompt on the phone.
 | `418`/timeout on a corporate network | client isolation; use tethering or adb |
 
 The dashboard header always shows the current address, and
-`%LOCALAPPDATA%\DESKGadget\data\server.log` records every connect and
+`%LOCALAPPDATA%\DeskGadget\data\server.log` records every connect and
 disconnect.

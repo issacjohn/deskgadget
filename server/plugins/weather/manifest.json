@@ -2,7 +2,7 @@
   "id": "weather",
   "name": "Weather",
   "version": "1.0.0",
-  "author": "LiquidDeck",
+  "author": "DeskGadget",
   "description": "Current conditions and 7-day forecast from Open-Meteo. No API key required.",
   "accent": "#8BE9FD",
   "interval": 600.0,

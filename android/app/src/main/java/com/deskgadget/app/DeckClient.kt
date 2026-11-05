@@ -39,7 +39,7 @@ data class PageData(
 
 data class DeckState(
     val status: ConnStatus = ConnStatus.IDLE,
-    val serverName: String = "DESKGadget",
+    val serverName: String = "DeskGadget",
     val endpoint: String = "",
     val pages: List<PageData> = emptyList(),
     val error: String? = null,

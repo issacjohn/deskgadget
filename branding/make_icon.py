@@ -1,4 +1,4 @@
-"""Generates the DESKGadget icon and every Android density from one source.
+"""Generates the DeskGadget icon and every Android density from one source.
 
 Run:  python branding/make_icon.py
 """

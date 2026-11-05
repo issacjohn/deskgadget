@@ -2,7 +2,7 @@
   "id": "system",
   "name": "System",
   "version": "1.0.0",
-  "author": "LiquidDeck",
+  "author": "DeskGadget",
   "description": "Live CPU, memory, disk and network usage from this PC.",
   "accent": "#6EE7FF",
   "interval": 1.0,

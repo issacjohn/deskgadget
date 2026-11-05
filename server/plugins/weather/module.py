@@ -9,7 +9,7 @@ import requests
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.weather")
+log = logging.getLogger("deskgadget.weather")
 
 WMO = {
     0: ("Clear sky", "sun"),

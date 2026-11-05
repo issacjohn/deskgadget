@@ -2,7 +2,7 @@
   "id": "battery",
   "name": "Battery",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Battery or UPS state for the machine on your desk.",
   "accent": "#FFD166",
   "interval": 20.0,

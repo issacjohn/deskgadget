@@ -15,7 +15,7 @@ import threading
 import time
 import webbrowser
 
-log = logging.getLogger("liquiddeck.web")
+log = logging.getLogger("deskgadget.web")
 
 # Browsers we are willing to raise. Anything else is left alone.
 BROWSER_EXES = {

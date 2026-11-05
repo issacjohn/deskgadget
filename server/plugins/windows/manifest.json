@@ -2,7 +2,7 @@
   "id": "windows",
   "name": "Windows",
   "version": "1.0.0",
-  "author": "DESKGadget",
+  "author": "DeskGadget",
   "description": "Every open window on the PC. Tap one to bring it forward, or send it to the taskbar.",
   "accent": "#9BE7FF",
   "interval": 2.5,

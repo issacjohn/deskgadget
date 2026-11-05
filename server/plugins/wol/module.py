@@ -11,7 +11,7 @@ import logging
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.wol")
+log = logging.getLogger("deskgadget.wol")
 
 PORT = 9
 

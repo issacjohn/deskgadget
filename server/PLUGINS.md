@@ -1,4 +1,4 @@
-# Writing a LiquidDeck module
+# Writing a DeskGadget module
 
 A module is a folder with two files. Nothing else is required, and no app
 release is needed — the phone renders whatever blocks you return.

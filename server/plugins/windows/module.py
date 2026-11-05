@@ -13,7 +13,7 @@ import psutil
 
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.windows")
+log = logging.getLogger("deskgadget.windows")
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32

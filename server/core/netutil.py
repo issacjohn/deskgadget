@@ -9,9 +9,9 @@ import subprocess
 import threading
 from typing import Optional
 
-log = logging.getLogger("liquiddeck.net")
+log = logging.getLogger("deskgadget.net")
 
-SERVICE_TYPE = "_liquiddeck._tcp.local."
+SERVICE_TYPE = "_deskgadget._tcp.local."
 
 
 def lan_ip() -> str:

@@ -17,7 +17,7 @@ import java.net.SocketTimeoutException
  */
 object UdpDiscovery {
 
-    private const val PROBE = "DESKGADGET?"
+    private const val PROBE = "DeskGadget?"
 
     data class Reply(val name: String, val host: String, val port: Int, val wired: Boolean)
 
@@ -64,7 +64,7 @@ object UdpDiscovery {
                 val json = runCatching { JSONObject(text) }.getOrNull() ?: continue
 
                 val replyPort = json.optInt("port", port)
-                val name = json.optString("name").ifBlank { "DESKGadget" }
+                val name = json.optString("name").ifBlank { "DeskGadget" }
                 val hosts = LinkedHashSet<String>()
 
                 // the sender address is the reachable one for this link

@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from core import paths, smtc
 from core.base import Module as BaseModule
 
-log = logging.getLogger("liquiddeck.media")
+log = logging.getLogger("deskgadget.media")
 
 VK_VOLUME_MUTE = 0xAD
 VK_VOLUME_DOWN = 0xAE

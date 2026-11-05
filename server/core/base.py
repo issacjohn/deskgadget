@@ -1,4 +1,4 @@
-"""Module (plugin) base class and loader for LiquidDeck.
+"""Module (plugin) base class and loader for DeskGadget.
 
 Every plugin lives in server/plugins/<folder>/ with a manifest.json describing
 how it appears in the dashboard, plus module.py exposing a ``Module`` subclass.
@@ -20,13 +20,13 @@ from typing import Any, Optional
 
 from . import paths
 
-log = logging.getLogger("liquiddeck.modules")
+log = logging.getLogger("deskgadget.modules")
 
 PROTOCOL_VERSION = 1
 
 
 class Module:
-    """Base class for a LiquidDeck module."""
+    """Base class for a DeskGadget module."""
 
     #: overridden by manifest.json, kept here as safe defaults
     id: str = "unknown"
@@ -164,7 +164,7 @@ def load_plugins(hub, settings_for, enabled_for) -> dict[str, Module]:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             mod_id = manifest["id"]
-            spec = importlib.util.spec_from_file_location(f"liquiddeck_plugin_{mod_id}", module_path)
+            spec = importlib.util.spec_from_file_location(f"deskgadget_plugin_{mod_id}", module_path)
             if spec is None or spec.loader is None:
                 raise ImportError(f"cannot load {module_path}")
             py_mod = importlib.util.module_from_spec(spec)
