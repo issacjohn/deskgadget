@@ -8,6 +8,7 @@ at the moment its caption appears, so the voice tracks the visuals.
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,8 @@ import edge_tts
 import imageio_ffmpeg
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-VOICE = "en-US-AvaNeural"
+# override with DG_VOICE, e.g. en-US-AndrewNeural (male)
+VOICE = os.environ.get("DG_VOICE", "en-US-AvaNeural")
 
 # (start seconds, spoken line)
 LINES = [
