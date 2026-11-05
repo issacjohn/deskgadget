@@ -12,6 +12,7 @@ import logging
 import psutil
 
 from core.base import Module as BaseModule
+from core.launcher import register_icon_source
 
 log = logging.getLogger("deskgadget.windows")
 
@@ -22,7 +23,6 @@ dwmapi = ctypes.windll.dwmapi
 DWMWA_CLOAKED = 14
 GW_OWNER = 4
 SW_RESTORE = 9
-SW_MINIMIZE = 6
 
 
 def _cloaked(hwnd: int) -> bool:
@@ -56,11 +56,15 @@ def _enumerate(limit: int) -> list[dict]:
                 return True
             pid = wt.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            app = ""
+            exe = ""
             try:
-                app = psutil.Process(pid.value).name().replace(".exe", "")
+                process = psutil.Process(pid.value)
+                app = process.name().replace(".exe", "")
+                exe = process.exe() or ""
             except Exception:
-                app = ""
-            found.append({"hwnd": int(hwnd), "title": title, "app": app})
+                pass
+            found.append({"hwnd": int(hwnd), "title": title, "app": app, "exe": exe})
         except Exception:
             pass
         return True
@@ -94,14 +98,6 @@ def _focus(hwnd: int) -> bool:
         return False
 
 
-def _minimize(hwnd: int) -> bool:
-    try:
-        user32.ShowWindow(hwnd, SW_MINIMIZE)
-        return True
-    except Exception:
-        return False
-
-
 class Module(BaseModule):
     def __init__(self, hub, settings):
         super().__init__(hub, settings)
@@ -116,12 +112,6 @@ class Module(BaseModule):
         self.items = _enumerate(limit)
 
     async def on_action(self, action: str, payload: dict) -> None:
-        if action == "minimize_top":
-            if self.items:
-                _minimize(self.items[0]["hwnd"])
-                await self.hub.notify(f"Minimised {self.items[0]['app']}")
-            self.push()
-            return
         raw = str(payload.get("id") or payload.get("url") or "")
         try:
             hwnd = int(raw)
@@ -134,10 +124,6 @@ class Module(BaseModule):
                 f"Focused {target['app']}" if ok and target else "Windows refused the switch"
             )
             await self.hub.notify(self.message)
-        elif action == "minimize":
-            _minimize(hwnd)
-            if target:
-                await self.hub.notify(f"Minimised {target['app']}")
         self.push()
 
     def page(self) -> dict:
@@ -164,22 +150,15 @@ class Module(BaseModule):
                         "id": str(w["hwnd"]),
                         "title": w["title"],
                         "sub": w["app"],
+                        "image": (
+                            f"/icons/{register_icon_source(w['exe'])}"
+                            if w.get("exe")
+                            else ""
+                        ),
                         "value": "↵",
                         "action": "focus",
                     }
                     for w in self.items
-                ],
-            }
-        )
-        blocks.append(
-            {
-                "type": "controls",
-                "items": [
-                    {
-                        "id": "minimize_top",
-                        "icon": "grid",
-                        "label": "Minimise top",
-                    }
                 ],
             }
         )

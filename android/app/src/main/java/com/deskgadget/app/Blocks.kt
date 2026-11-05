@@ -95,7 +95,7 @@ fun BlockView(
         "sparkline" -> SparkCard(block, accent, modifier)
         "meters" -> MetersCard(block, accent, modifier)
         "kv" -> KvCard(block, modifier)
-        "list" -> ListCard(block, accent, modifier) { action, payload -> onAction(action, payload) }
+        "list" -> ListCard(block, accent, endpoint, modifier) { action, payload -> onAction(action, payload) }
         "news" -> NewsBlock(block, accent) { action, payload -> onAction(action, payload) }
         "toggles" -> TogglesCard(block, accent) { id ->
             onAction(block.str("action", "mic_toggle"), JSONObject().put("id", id))
@@ -422,6 +422,7 @@ private fun KvCard(block: JSONObject, modifier: Modifier) {
 private fun ListCard(
     block: JSONObject,
     accent: Color,
+    endpoint: String,
     modifier: Modifier,
     onAction: (String, JSONObject?) -> Unit,
 ) {
@@ -458,8 +459,19 @@ private fun ListCard(
                     .padding(vertical = if (compact) 6.dp else 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val image = item.optString("image")
                 val icon = item.optString("icon")
-                if (icon.isNotBlank()) {
+                if (image.isNotBlank()) {
+                    AsyncImage(
+                        model = endpoint.trimEnd('/') + image,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(7.dp)),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                } else if (icon.isNotBlank()) {
                     WeatherGlyph(
                         kind = icon,
                         isDay = true,

@@ -25,8 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -61,12 +61,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -470,6 +474,20 @@ fun DeckScreen(
                     }
                     ModuleTabs(pages, pager, homeOffset, Modifier.weight(1f), select)
                     Spacer(Modifier.width(10.dp))
+                    if (hasHome && pager.currentPage > 0) {
+                        pages.getOrNull(pager.currentPage - 1)?.let { active ->
+                            Text(
+                                active.title.uppercase(),
+                                color = Muted,
+                                fontSize = 9.sp,
+                                letterSpacing = 1.2.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 130.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                    }
                     Text(clock, color = Muted, fontSize = 10.sp, letterSpacing = 0.8.sp)
                     Spacer(Modifier.width(8.dp))
                     HeaderChip("\u2665", onClick = { supportOpen = true })
@@ -668,14 +686,21 @@ private fun ModuleTabs(
             }
         }
     } else {
-        Row(
-            modifier = modifier.horizontalScroll(rememberScrollState()),
+        val listState = rememberLazyListState()
+        val activeIndex = (pager.currentPage - offset).coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+        // keep the current module's tab in view when the deck is swiped
+        LaunchedEffect(activeIndex) {
+            listState.animateScrollToItem(activeIndex)
+        }
+        LazyRow(
+            state = listState,
+            modifier = modifier,
             verticalAlignment = Alignment.Bottom,
         ) {
-            pages.forEachIndexed { index, page ->
+            items(count = pages.size) { index ->
                 TabItem(
-                    page = page,
-                    active = pager.currentPage - offset == index,
+                    page = pages[index],
+                    active = activeIndex == index,
                     modifier = Modifier.widthIn(min = 108.dp),
                     underlineWidth = 44.dp,
                     onClick = { onSelect(index + offset) },
@@ -712,7 +737,7 @@ private fun HomeTab(active: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Module tiles with their live value — the "at a glance" page. */
+/** Module tiles with their live value — sized to fit the panel, no scrolling. */
 @Composable
 private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
     Column(
@@ -734,58 +759,91 @@ private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(10.dp))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
-            contentPadding = PaddingValues(bottom = 8.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(count = pages.size) { i ->
-                ModuleTile(page = pages[i], onClick = { onOpen(i) })
+
+        // Work the grid out from the space actually available: every module
+        // gets a tile, and the tiles share the height instead of scrolling.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val count = pages.size.coerceAtLeast(1)
+            val columns = ((maxWidth / 122.dp).toFloat() + 0.5f).toInt()
+                .coerceIn(2, 6)
+                .coerceAtMost(count)
+            val rows = ((count + columns - 1) / columns).coerceAtLeast(1)
+            val gap = if (rows > 2) 7.dp else 9.dp
+            val compact = rows > 2
+
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                repeat(rows) { row ->
+                    Row(
+                        Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        repeat(columns) { column ->
+                            val index = row * columns + column
+                            if (index < count) {
+                                ModuleTile(
+                                    page = pages[index],
+                                    compact = compact,
+                                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                                    onClick = { onOpen(index) },
+                                )
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ModuleTile(page: PageData, onClick: () -> Unit) {
+private fun ModuleTile(
+    page: PageData,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val accent = hexColor(page.accent)
+    val shape = RoundedCornerShape(if (compact) 16.dp else 20.dp)
     Column(
-        Modifier
-            .fillMaxWidth()
-            .height(88.dp)
-            .clip(RoundedCornerShape(20.dp))
+        modifier
+            .clip(shape)
             .background(
                 Brush.verticalGradient(
                     listOf(accent.copy(alpha = 0.18f), Color(0x08FFFFFF))
                 )
             )
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
+            .border(1.dp, Color(0x22FFFFFF), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 12.dp),
+            .padding(
+                horizontal = if (compact) 11.dp else 13.dp,
+                vertical = if (compact) 9.dp else 12.dp,
+            ),
     ) {
         Icon(
             imageVector = iconForModule(page.id),
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.size(17.dp),
+            modifier = Modifier.size(if (compact) 14.dp else 17.dp),
         )
         Spacer(Modifier.weight(1f))
         Text(
             page.title,
             color = Ink,
-            fontSize = 13.sp,
+            fontSize = if (compact) 11.5.sp else 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(2.dp))
         Text(
             moduleSummary(page),
             color = Muted,
-            fontSize = 10.5.sp,
-            lineHeight = 13.sp,
+            fontSize = if (compact) 9.5.sp else 10.5.sp,
+            lineHeight = if (compact) 12.sp else 13.sp,
             maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1082,12 +1140,11 @@ private fun PageBody(
         return
     }
 
-    val scroll = rememberScrollState()
     Box(Modifier.fillMaxSize()) {
+        AutoFit(Modifier.fillMaxSize()) {
         Column(
             Modifier
-                .fillMaxSize()
-                .verticalScroll(scroll)
+                .fillMaxWidth()
                 .padding(horizontal = if (compact) 18.dp else 20.dp)
                 .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
         ) {
@@ -1132,18 +1189,43 @@ private fun PageBody(
             }
         }
         }
-        if (scroll.canScrollForward) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0xE604060A))
-                        )
-                    )
+        }
+    }
+}
+
+/**
+ * Scales its content down until it fits the available height. Pages are built
+ * from cards of very different sizes, so measuring once and scaling beats
+ * making the user scroll a desk panel.
+ */
+@Composable
+private fun AutoFit(
+    modifier: Modifier = Modifier,
+    minScale: Float = 0.55f,
+    content: @Composable () -> Unit,
+) {
+    SubcomposeLayout(modifier) { constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val placeable = subcompose(0, content).first().measure(
+            Constraints(
+                minWidth = width,
+                maxWidth = width,
+                minHeight = 0,
+                maxHeight = Constraints.Infinity,
             )
+        )
+        val scale = if (placeable.height > 0) {
+            (height.toFloat() / placeable.height).coerceIn(minScale, 1f)
+        } else {
+            1f
+        }
+        layout(width, height) {
+            placeable.placeWithLayer(0, 0) {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
         }
     }
 }

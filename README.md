@@ -63,18 +63,15 @@ Windows server · Android client · plugins anyone can write
 
 | Module | What it does |
 |---|---|
-| **System** | CPU, RAM, disk, network, uptime, top processes, live sparkline |
+| **System** | CPU, RAM, disk and network live, public/LAN IP, latency, battery or AC state, uptime, top processes, sparkline, plus quick actions (lock, screen off, desktop, screenshot) |
 | **Media** | Now playing with artwork and seek, PC volume, transport, mute **each output**, mute **each microphone** |
 | **News** | Multi-region, multi-topic headlines with publisher logos, plus **free-text topics of your own**; tap opens the article on the PC, in front |
 | **Shortcuts** | Launch Windows apps; **Steam games detected automatically** with cover art |
 | **Windows** | Every open window; tap to bring it forward, or send it to the taskbar |
 | **Wake on LAN** | Magic packet to another machine, straight from the panel |
 | **Clipboard** | Read the PC clipboard, and send text back to it from the phone |
-| **Battery** | Battery or UPS charge, power source and time left |
 | **Weather** | Current + hourly + 7-day, no API key |
 | **Drives** | Ring per volume, free/total meters |
-| **Network** | Public/LAN IP, latency, live throughput |
-| **Quick** | Lock, screen off, show desktop, screenshot |
 | **Timer** | Countdown / Pomodoro with start, +5, reset |
 | **AudioMesh** | Example third-party module (ship your own the same way) |
 
