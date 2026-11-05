@@ -23,7 +23,7 @@ VOICE = os.environ.get("DG_VOICE", "en-US-AndrewNeural")
 
 # (start seconds, spoken line)
 LINES = [
-    (0.0, "Your old phone or tablet just became the control panel for your PC."),
+    (0.25, "Your old phone or tablet just became the control panel for your PC."),
     (4.6, "Now playing, with artwork, volume, and every microphone."),
     (9.4, "Tap a headline, and it opens on your desktop, already in front."),
     (14.4, "Switch between windows without touching the mouse."),
