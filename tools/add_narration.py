@@ -1,65 +1,51 @@
-"""Add a synthesized voiceover to the demo reel.
+"""Add a neural voiceover to the demo reel.
 
     python tools/add_narration.py in.mp4 out.mp4
 
-Uses the Windows SAPI voices (no cloud, no account). Each line is generated
-separately and delayed to the moment its caption appears, so the voice tracks
-the visuals instead of drifting.
+Uses edge-tts (Microsoft's neural voices over the network) and places each line
+at the moment its caption appears, so the voice tracks the visuals.
 """
 from __future__ import annotations
 
+import asyncio
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+import edge_tts
 import imageio_ffmpeg
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-VOICE = "Microsoft Zira Desktop"
+VOICE = "en-US-AvaNeural"
 
-# (start seconds, line)
+# (start seconds, spoken line)
 LINES = [
-    (0.3, "This is DESKGadget. Your PC, one swipe away."),
-    (2.6, "Now playing, with artwork, right on the phone."),
-    (6.2, "Tap a headline and it opens on your PC, in front."),
-    (10.2, "Switch windows from the phone."),
-    (14.2, "Clipboard works both ways."),
-    (18.2, "Windows and Android. Free and open source."),
+    (0.2, "Your phone just became the control panel for your PC."),
+    (4.2, "Now playing, with artwork, volume, and every microphone."),
+    (9.4, "Tap a headline, and it opens on your desktop, already in front."),
+    (14.4, "Switch between windows without touching the mouse."),
+    (18.4, "Clipboard goes both ways. Read it here, send text back."),
+    (23.6, "Wake another machine, check the battery, and add modules without rebuilding the app."),
+    (29.6, "DESKGadget. Windows and Android."),
 ]
-
-PS = """
-Add-Type -AssemblyName System.Speech
-$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$s.SelectVoice('{voice}')
-$s.Rate = 0
-$s.Volume = 100
-$s.SetOutputToWaveFile('{out}')
-$s.Speak('{text}')
-$s.SetOutputToNull()
-$s.Dispose()
-"""
-
-
-def speak(text: str, out: Path) -> None:
-    script = PS.format(voice=VOICE, out=str(out).replace("'", "''"), text=text.replace("'", "''"))
-    subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        check=True,
-        capture_output=True,
-    )
 
 
 def build(src: Path, dst: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
+
+        async def synth() -> None:
+            for i, (_, line) in enumerate(LINES):
+                await edge_tts.Communicate(line, VOICE).save(str(tmpdir / f"line{i}.mp3"))
+
+        asyncio.run(synth())
+
         inputs = ["-i", str(src)]
         filters = []
         labels = []
-        for i, (start, line) in enumerate(LINES):
-            wav = tmpdir / f"line{i}.wav"
-            speak(line, wav)
-            inputs += ["-i", str(wav)]
+        for i, (start, _) in enumerate(LINES):
+            inputs += ["-i", str(tmpdir / f"line{i}.mp3")]
             ms = int(start * 1000)
             filters.append(
                 f"[{i + 1}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
@@ -67,7 +53,7 @@ def build(src: Path, dst: Path) -> None:
             )
             labels.append(f"[a{i}]")
 
-        mix = "".join(labels) + f"amix=inputs={len(LINES)}:normalize=0,volume=1.4,apad[a]"
+        mix = "".join(labels) + f"amix=inputs={len(LINES)}:normalize=0,apad[a]"
         cmd = [
             FFMPEG,
             "-y",
