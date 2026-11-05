@@ -23,13 +23,15 @@ VOICE = os.environ.get("DG_VOICE", "en-US-AndrewNeural")
 
 # (start seconds, spoken line)
 LINES = [
-    (0.25, "Your old phone or tablet just became the control panel for your PC."),
-    (4.6, "Now playing, with artwork, volume, and every microphone."),
-    (9.4, "Tap a headline, and it opens on your desktop, already in front."),
-    (14.4, "Switch between windows without touching the mouse."),
-    (18.4, "Clipboard goes both ways. Read it here, send text back."),
-    (23.6, "Wake another machine, check the battery, and add modules without rebuilding the app."),
-    (29.6, "Desk Gadget. Windows and Android, completely free."),
+    (0.25, "Got an old phone or tablet lying around? Turn it into your PC's ultimate control panel with DeskGadget."),
+    (7.56, "Keep an eye on everything. CPU, RAM, storage, and network stats, all live."),
+    (13.96, "Control your media, check what's playing, adjust volume, and manage all your mics."),
+    (19.71, "Launch your favorite apps and Steam games with just one tap. No digging around."),
+    (25.01, "Stay in the loop with news picked by you. Found something interesting? Open it straight on your PC."),
+    (30.93, "Check the weather right now, see what's coming next, and plan your week."),
+    (35.32, "And that's not even everything. Switch windows, share your clipboard, wake up another PC, and check battery levels."),
+    (42.71, "Want more? Add your own modules or build one from scratch. No app rebuild needed. Make it yours."),
+    (49.47, "DeskGadget. Your devices, your setup. Completely free on Windows and Android."),
 ]
 
 

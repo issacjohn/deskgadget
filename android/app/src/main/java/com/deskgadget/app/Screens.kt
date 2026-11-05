@@ -754,7 +754,7 @@ private fun ModuleTile(page: PageData, onClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .height(102.dp)
+            .height(88.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(
                 Brush.verticalGradient(
