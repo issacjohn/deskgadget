@@ -21,13 +21,12 @@ FONT_BOLD = r"C\:/Windows/Fonts/segoeuib.ttf"
 
 # (start, end, caption, sub-caption)
 CAPTIONS = [
-    (0.0, 2.6, "DESKGADGET", "your PC, one swipe away"),
-    (2.6, 5.6, "Everything at a glance", "live modules on one screen"),
-    (5.6, 9.0, "Now playing", "artwork, transport and seek"),
-    (9.0, 12.4, "News opens on your PC", "and comes to the front"),
-    (12.4, 15.8, "Switch windows", "focus or minimise from the phone"),
-    (15.8, 19.2, "Add modules without", "rebuilding the app"),
-    (19.2, 22.0, "DESKGadget", "windows + android"),
+    (0.0, 2.4, "DESKGADGET", "your PC, one swipe away"),
+    (2.4, 6.0, "Now playing", "artwork right on the phone"),
+    (6.0, 10.0, "News opens on your PC", "and comes to the front"),
+    (10.0, 14.0, "Switch windows", "bring one forward from the phone"),
+    (14.0, 18.0, "Clipboard, both ways", "read it, or send text back"),
+    (18.0, 24.0, "DESKGADGET", "windows + android"),
 ]
 
 
@@ -50,9 +49,9 @@ def build(raw: Path, out: Path) -> None:
         filters.append(drawtext(sub, 1330, 34, FONT, "#9AA6BA", start, end))
 
     filters += [
-        drawtext("DESKGADGET", 1450, 24, FONT_BOLD, "#7CE7FF", 0.0, 22.0),
+        drawtext("DESKGADGET", 1450, 24, FONT_BOLD, "#7CE7FF", 0.0, 24.0),
         "fade=t=in:st=0:d=0.4",
-        "fade=t=out:st=21.4:d=0.6",
+        "fade=t=out:st=23.4:d=0.6",
     ]
 
     cmd = [
@@ -68,8 +67,7 @@ def build(raw: Path, out: Path) -> None:
         "yuv420p",
         "-r",
         "30",
-        "-t",
-        "22",
+        "-t", "24",
         "-an",
         str(out),
     ]
