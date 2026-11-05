@@ -102,6 +102,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Notifications or a swipe can bring the bars back; tuck them away again. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) return
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
     /** Hardware volume rocker drives the PC, the whole point of the app. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {

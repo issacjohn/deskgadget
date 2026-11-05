@@ -1,0 +1,17 @@
+{
+  "id": "touchpad",
+  "name": "Touchpad",
+  "version": "1.0.0",
+  "author": "DeskGadget",
+  "description": "Use the phone as a trackpad: drag to move, tap to click, two fingers to scroll.",
+  "accent": "#7CE7FF",
+  "interval": 0,
+  "default_enabled": false,
+  "settings": {
+    "sensitivity": {
+      "type": "number",
+      "label": "Pointer speed",
+      "default": 1.0
+    }
+  }
+}

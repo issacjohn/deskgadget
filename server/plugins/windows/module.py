@@ -106,7 +106,7 @@ class Module(BaseModule):
 
     async def update(self) -> None:
         try:
-            limit = max(1, min(20, int(self.settings.get("limit", 8) or 8)))
+            limit = max(1, min(40, int(self.settings.get("limit", 20) or 20)))
         except Exception:
             limit = 8
         self.items = _enumerate(limit)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,10 +26,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Circle
+import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeDown
@@ -67,11 +74,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import coil.compose.AsyncImage
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -112,6 +122,11 @@ fun BlockView(
         }
         "shortcuts" -> ShortcutsCard(block, accent, endpoint) { id ->
             onAction("launch", JSONObject().put("id", id))
+        }
+        "hours" -> HoursCard(block, accent, modifier)
+        "note" -> NoteCard(block, modifier)
+        "touchpad" -> TouchpadCard(block, accent, modifier) { action, payload ->
+            onAction(action, payload)
         }
     }
 }
@@ -171,7 +186,35 @@ private fun HeroCard(
                 val sub = block.str("sub")
                 if (sub.isNotBlank()) {
                     Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
-                    Text(sub, color = Muted, fontSize = if (compact) 11.5.sp else 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(sub, color = Muted, fontSize = if (compact) 12.5.sp else 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                // Compact detail figures (feels like, humidity, wind) live inside
+                // the hero instead of taking a whole card of their own.
+                val stats = block.optJSONArray("stats")
+                if (stats != null && stats.length() > 0) {
+                    Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
+                        for (i in 0 until stats.length()) {
+                            val stat = stats.getJSONObject(i)
+                            Column {
+                                Text(
+                                    stat.str("label").uppercase(),
+                                    color = Faint,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 1.2.sp,
+                                    maxLines = 1,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    stat.str("value"),
+                                    color = Ink,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
                 }
             }
             if (icon != null) {
@@ -209,15 +252,20 @@ private fun HeroCard(
 @Composable
 private fun GaugeCard(block: JSONObject, accent: Color, modifier: Modifier) {
     val compact = LocalCompactLayout.current
-    val ring = if (compact) 74.dp else 88.dp
+    val preferred = if (compact) 74.dp else 88.dp
     val items = block.arr("items")
     GlassPanel(modifier.fillMaxWidth()) {
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val count = items.length().coerceAtLeast(1)
+        val gap = 10.dp
+        // never draw a ring wider than its share of the card
+        val ring = minOf(preferred, (maxWidth - gap * (count - 1)) / count)
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            for (i in 0 until items.length()) {
+            for (i in 0 until count) {
                 val item = items.getJSONObject(i)
                 Box(contentAlignment = Alignment.Center) {
                     Canvas(Modifier.size(ring)) {
@@ -262,6 +310,7 @@ private fun GaugeCard(block: JSONObject, accent: Color, modifier: Modifier) {
                 }
             }
         }
+      }
     }
 }
 
@@ -387,32 +436,126 @@ private fun ProgressTrack(fraction: Float, accent: Color) {
 /* ----------------------------- kv ----------------------------- */
 
 @Composable
+private fun KvItem(item: JSONObject, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.Start) {
+        Text(
+            item.str("label").uppercase(),
+            color = Faint,
+            fontSize = 9.5.sp,
+            letterSpacing = 1.2.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(5.dp))
+        val text = item.str("value")
+        Text(
+            text,
+            color = Ink,
+            // long values such as IPv4 addresses get a slightly tighter size
+            // instead of being cut off in a narrow column
+            fontSize = if (text.length > 12) 12.5.sp else 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun KvCard(block: JSONObject, modifier: Modifier) {
     val items = block.arr("items")
     GlassPanel(
         modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (i in 0 until items.length()) {
+                KvItem(items.getJSONObject(i), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/* ----------------------------- hours ----------------------------- */
+
+/** A horizontal strip of upcoming hours — reads at a glance in landscape. */
+@Composable
+private fun HoursCard(block: JSONObject, accent: Color, modifier: Modifier) {
+    val items = block.arr("items")
+    GlassPanel(
+        modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+    ) {
+        val title = block.str("title")
+        if (title.isNotBlank()) {
+            Text(title.uppercase(), color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(7.dp))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (i in 0 until items.length()) {
                 val item = items.getJSONObject(i)
-                Column(horizontalAlignment = Alignment.Start) {
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        item.str("label").uppercase(),
+                        item.str("label"),
                         color = Faint,
-                        fontSize = 9.5.sp,
-                        letterSpacing = 1.5.sp,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(4.dp))
+                    WeatherGlyph(
+                        kind = item.str("icon", "cloud"),
+                        isDay = item.optBoolean("is_day", true),
+                        tint = accent,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         item.str("value"),
                         color = Ink,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 1,
                     )
                 }
             }
         }
+    }
+}
+
+/* ----------------------------- note ----------------------------- */
+
+/** Long text such as the PC clipboard: readable body copy, not a list row. */
+@Composable
+private fun NoteCard(block: JSONObject, modifier: Modifier) {
+    GlassPanel(
+        modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                block.str("label").uppercase(),
+                color = Muted,
+                fontSize = 10.5.sp,
+                letterSpacing = 2.sp,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val meta = block.str("meta")
+            if (meta.isNotBlank()) {
+                Text(meta, color = Faint, fontSize = 10.sp, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            block.str("text"),
+            color = Ink,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            maxLines = 7,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -431,69 +574,116 @@ private fun ListCard(
     GlassPanel(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)) {
         val title = block.str("title")
         if (title.isNotBlank()) {
-            Text(title.uppercase(), color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Text(title.uppercase(), color = Muted, fontSize = 10.5.sp, letterSpacing = 2.sp)
             Spacer(Modifier.height(8.dp))
         }
-        for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
-            if (i > 0) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // A long single-column list (open windows, wake targets) wastes half
+            // the panel in landscape, so split it once there is room.
+            val twoUp = items.length() > 5 && maxWidth >= 620.dp
+            val half = (items.length() + 1) / 2
+            if (twoUp) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ListColumn(items, 0, half, accent, endpoint, compact, onAction, Modifier.weight(1f))
+                    ListColumn(items, half, items.length(), accent, endpoint, compact, onAction, Modifier.weight(1f))
+                }
+            } else {
+                ListColumn(items, 0, items.length(), accent, endpoint, compact, onAction, Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListColumn(
+    items: JSONArray,
+    from: Int,
+    to: Int,
+    accent: Color,
+    endpoint: String,
+    compact: Boolean,
+    onAction: (String, JSONObject?) -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier) {
+        for (i in from until to) {
+            if (i > from) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x0FFFFFFF)))
             }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (item.optString("action").isNotBlank()) {
-                            Modifier.clickable {
-                                onAction(
-                                    item.optString("action"),
-                                    JSONObject()
-                                        .put("url", item.optString("url"))
-                                        .put("id", item.optString("id")),
-                                )
-                            }
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(vertical = if (compact) 6.dp else 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val image = item.optString("image")
-                val icon = item.optString("icon")
-                if (image.isNotBlank()) {
-                    AsyncImage(
-                        model = endpoint.trimEnd('/') + image,
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(RoundedCornerShape(7.dp)),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                } else if (icon.isNotBlank()) {
-                    WeatherGlyph(
-                        kind = icon,
-                        isDay = true,
-                        tint = accent,
-                        modifier = Modifier.size(24.dp).padding(end = 2.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(item.str("title"), color = Ink, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val sub = item.str("sub")
-                    if (sub.isNotBlank()) {
-                        Text(sub, color = Faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ListRow(items.getJSONObject(i), accent, endpoint, compact, onAction)
+        }
+    }
+}
+
+@Composable
+private fun ListRow(
+    item: JSONObject,
+    accent: Color,
+    endpoint: String,
+    compact: Boolean,
+    onAction: (String, JSONObject?) -> Unit,
+) {
+    val action = item.optString("action")
+    val hasAction = action.isNotBlank()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(
+                if (hasAction) {
+                    Modifier.clickable {
+                        onAction(
+                            action,
+                            JSONObject()
+                                .put("url", item.optString("url"))
+                                .put("id", item.optString("id")),
+                        )
                     }
+                } else {
+                    Modifier
                 }
-                Text(
-                    item.str("value"),
-                    color = Ink.copy(alpha = 0.86f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
+            )
+            .padding(vertical = if (compact) 7.dp else 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val image = item.optString("image")
+        val icon = item.optString("icon")
+        if (image.isNotBlank()) {
+            AsyncImage(
+                model = endpoint.trimEnd('/') + image,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+            Spacer(Modifier.width(12.dp))
+        } else if (icon.isNotBlank()) {
+            WeatherGlyph(
+                kind = icon,
+                isDay = true,
+                tint = accent,
+                modifier = Modifier.size(26.dp).padding(end = 2.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(item.str("title"), color = Ink, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val sub = item.str("sub")
+            if (sub.isNotBlank()) {
+                Text(sub, color = Faint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+        }
+        val value = item.str("value")
+        if (value.isNotBlank()) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                value,
+                color = if (hasAction) accent else Ink.copy(alpha = 0.86f),
+                fontSize = if (hasAction) 12.5.sp else 15.sp,
+                fontWeight = if (hasAction) FontWeight.Bold else FontWeight.Medium,
+                letterSpacing = if (hasAction) 1.4.sp else 0.sp,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -504,10 +694,44 @@ private fun ListCard(
 private fun ControlsCard(block: JSONObject, accent: Color, onPress: (String) -> Unit) {
     val items = block.arr("items")
     val transport = block.str("style") == "transport"
+    val stack = block.str("style") == "stack"
     GlassPanel(
         Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = if (transport) 20.dp else 16.dp),
     ) {
+        if (stack) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (i in 0 until items.length()) {
+                    val item = items.getJSONObject(i)
+                    val id = item.str("id")
+                    val rowInteraction = remember { MutableInteractionSource() }
+                    val rowPressed by rowInteraction.collectIsPressedAsState()
+                    val rowFlash = rememberTapFlash(rowPressed)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (rowFlash) accent.copy(alpha = 0.30f) else Color(0x14FFFFFF))
+                            .clickable(
+                                interactionSource = rowInteraction,
+                                indication = null,
+                            ) { onPress(id) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = iconFor(item.str("icon")),
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(item.str("label"), color = Ink, fontSize = 12.5.sp)
+                    }
+                }
+            }
+            return@GlassPanel
+        }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = if (transport) Arrangement.SpaceEvenly else Arrangement.spacedBy(10.dp),
@@ -546,7 +770,13 @@ private fun iconFor(name: String): ImageVector = when (name) {
     "volume_up" -> Icons.Rounded.VolumeUp
     "volume_down" -> Icons.Rounded.VolumeDown
     "mute" -> Icons.Rounded.VolumeOff
-    else -> Icons.Rounded.PlayArrow
+    "lock" -> Icons.Rounded.Lock
+    "screen_off" -> Icons.Rounded.PowerSettingsNew
+    "power" -> Icons.Rounded.PowerSettingsNew
+    "desktop" -> Icons.Rounded.DesktopWindows
+    "grid" -> Icons.Rounded.GridView
+    "camera" -> Icons.Rounded.PhotoCamera
+    else -> Icons.Rounded.Circle
 }
 
 @Composable
@@ -559,6 +789,7 @@ private fun TransportButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
     val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "press")
 
     Box(
@@ -581,6 +812,12 @@ private fun TransportButton(
             .pressable(interaction, onClick),
         contentAlignment = Alignment.Center,
     ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .background(if (flash) Color(0x44FFFFFF) else Color.Transparent)
+        )
         Icon(
             icon,
             contentDescription = null,
@@ -600,14 +837,15 @@ private fun PillButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier
             .clip(shape)
             .background(
                 Brush.linearGradient(
-                    if (pressed) {
-                        listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.14f))
+                    if (flash) {
+                        listOf(accent.copy(alpha = 0.32f), accent.copy(alpha = 0.18f))
                     } else {
                         listOf(Color(0x18FFFFFF), Color(0x08FFFFFF))
                     }
@@ -703,6 +941,10 @@ private fun ToggleRow(item: JSONObject, accent: Color, onToggle: () -> Unit) {
 
 /* ----------------------------- news ----------------------------- */
 
+/**
+ * Lead story + two columns of briefs on a landscape panel: one headline to
+ * catch the eye, the rest scannable, and nothing hidden below the fold.
+ */
 @Composable
 private fun NewsBlock(
     block: JSONObject,
@@ -710,26 +952,280 @@ private fun NewsBlock(
     onAction: (String, JSONObject?) -> Unit,
 ) {
     val items = block.arr("items")
+    if (items.length() == 0) return
+    val title = block.str("title")
+
+    // Balance the last page instead of leaving it with one or two stories:
+    // 20 stories become 7 + 7 + 6, not 9 + 9 + 2.
+    val pageCount = ((items.length() + 8) / 9).coerceAtLeast(1)
+    val perPage = ((items.length() + pageCount - 1) / pageCount).coerceAtLeast(1)
+    var page by remember { mutableStateOf(0) }
+    LaunchedEffect(items.length()) { page = 0 }
+    val startIndex = (page * perPage).coerceAtMost((items.length() - 1).coerceAtLeast(0))
+
+    fun open(item: JSONObject) {
+        onAction("open", JSONObject().put("url", item.optString("url")))
+    }
+
     Column(Modifier.fillMaxWidth()) {
-        val title = block.str("title")
         if (title.isNotBlank()) {
-            Text(
-                title.uppercase(),
-                color = Muted,
-                fontSize = 10.sp,
-                letterSpacing = 2.sp,
-                modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
-            )
-        }
-        for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
-            NewsCard(item, accent) {
-                onAction("open", JSONObject().put("url", item.optString("url")))
+            Row(
+                Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title.uppercase(),
+                    color = Muted,
+                    fontSize = 10.5.sp,
+                    letterSpacing = 2.sp,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${items.length()} STORIES",
+                    color = Faint,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.4.sp,
+                )
+                if (pageCount > 1) {
+                    Spacer(Modifier.width(10.dp))
+                    PagerArrow("‹", enabled = page > 0, accent = accent) { page-- }
+                    Text(
+                        "${page + 1}/$pageCount",
+                        color = Muted,
+                        fontSize = 9.5.sp,
+                        letterSpacing = 0.6.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                    )
+                    PagerArrow("›", enabled = page < pageCount - 1, accent = accent) { page++ }
+                }
             }
-            Spacer(Modifier.height(10.dp))
+        }
+
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 600.dp) {
+                // portrait / narrow: simple stacked cards
+                val endIndex = (startIndex + perPage).coerceAtMost(items.length())
+                for (i in startIndex until endIndex) {
+                    val item = items.getJSONObject(i)
+                    NewsCard(item, accent) { open(item) }
+                    Spacer(Modifier.height(10.dp))
+                }
+            } else {
+                // 8 briefs = 4 rows, which fits the short landscape panel; the
+                // rest stay in the feed data for the next refresh
+                val endIndex = (startIndex + perPage).coerceAtMost(items.length())
+                val briefCount = (endIndex - startIndex - 1).coerceAtLeast(0).coerceAtMost(8)
+                val rest = (1..briefCount).map { items.getJSONObject(startIndex + it) }
+                val half = (rest.size + 1) / 2
+                val rows = (rest.size + 1) / 2
+                // a three-row minimum keeps the lead card tall enough for a
+                // five-line headline on short final pages
+                val leadHeight = (rows.coerceAtLeast(3) * 64).dp
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LeadCard(
+                        items.getJSONObject(startIndex),
+                        accent,
+                        Modifier.weight(1.08f).height(leadHeight),
+                    ) { open(items.getJSONObject(startIndex)) }
+                    BriefColumn(rest.take(half), accent, Modifier.weight(1f)) { open(it) }
+                    BriefColumn(rest.drop(half), accent, Modifier.weight(1f)) { open(it) }
+                }
+            }
         }
     }
 }
+
+@Composable
+private fun PagerArrow(label: String, enabled: Boolean, accent: Color, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
+    Box(
+        Modifier
+            .size(34.dp)
+            .then(if (enabled) Modifier.pressable(interaction, onClick) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        flash -> accent.copy(alpha = 0.35f)
+                        enabled -> Color(0x18FFFFFF)
+                        else -> Color(0x08FFFFFF)
+                    }
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                color = if (enabled) Ink else Faint.copy(alpha = 0.5f),
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LeadCard(item: JSONObject, accent: Color, modifier: Modifier, onOpen: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
+    val source = item.optString("source")
+    val image = item.optString("image")
+
+    Box(modifier) {
+        GlassPanel(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NewsMark(image, source, accent, 26.dp)
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    source.uppercase(),
+                    color = accent.copy(alpha = 0.95f),
+                    fontSize = 9.5.sp,
+                    letterSpacing = 1.3.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(item.optString("ago"), color = Faint, fontSize = 9.5.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                item.str("title"),
+                color = Ink,
+                fontSize = 18.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .width(34.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accent)
+            )
+        }
+        if (flash) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(accent.copy(alpha = 0.10f))
+            )
+        }
+        Box(
+            Modifier
+                .matchParentSize()
+                .pressable(interaction, onOpen)
+        )
+    }
+}
+
+@Composable
+private fun BriefColumn(
+    items: List<JSONObject>,
+    accent: Color,
+    modifier: Modifier,
+    onOpen: (JSONObject) -> Unit,
+) {
+    Column(modifier) {
+        items.forEachIndexed { index, item ->
+            BriefRow(item, accent) { onOpen(item) }
+            if (index != items.lastIndex) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color(0x12FFFFFF))
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BriefRow(item: JSONObject, accent: Color, onOpen: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
+    val source = item.optString("source")
+    val image = item.optString("image")
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (flash) accent.copy(alpha = 0.16f) else Color.Transparent)
+            .pressable(interaction, onOpen)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        NewsMark(image, source, accent, 18.dp)
+        Spacer(Modifier.width(9.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    source.uppercase(),
+                    color = accent.copy(alpha = 0.85f),
+                    fontSize = 8.5.sp,
+                    letterSpacing = 1.1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(item.optString("ago"), color = Faint, fontSize = 8.5.sp)
+            }
+            Spacer(Modifier.height(3.dp))
+            Text(
+                item.str("title"),
+                color = Ink.copy(alpha = 0.94f),
+                fontSize = 12.sp,
+                lineHeight = 14.5.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewsMark(image: String, source: String, accent: Color, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size / 4))
+            .background(accent.copy(alpha = 0.12f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (image.isNotBlank()) {
+            AsyncImage(
+                model = image,
+                contentDescription = source,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().padding(size / 8),
+            )
+        } else {
+            Text(
+                source.take(1).uppercase(),
+                color = accent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun NewsCard(item: JSONObject, accent: Color, onOpen: () -> Unit) {
@@ -752,49 +1248,28 @@ private fun NewsCard(item: JSONObject, accent: Color, onOpen: () -> Unit) {
             .padding(14.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(
-            Modifier
-                .size(54.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(accent.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (image.isNotBlank()) {
-                AsyncImage(
-                    model = image,
-                    contentDescription = source,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().padding(9.dp),
-                )
-            } else {
-                Text(
-                    source.take(1).uppercase(),
-                    color = accent,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
+        NewsMark(image, source, accent, 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     source.uppercase(),
                     color = accent,
-                    fontSize = 9.5.sp,
-                    letterSpacing = 1.4.sp,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.3.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Text(item.optString("ago"), color = Muted, fontSize = 10.sp)
+                Text(item.optString("ago"), color = Faint, fontSize = 9.sp)
             }
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
-                item.optString("title"),
+                item.str("title"),
                 color = Ink,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                lineHeight = 22.sp,
+                fontSize = 15.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -855,7 +1330,7 @@ private fun TextInputCard(
         Text(
             block.str("label").uppercase().ifBlank { "SEND TEXT" },
             color = Muted,
-            fontSize = 10.sp,
+            fontSize = 10.5.sp,
             letterSpacing = 2.sp,
         )
         Spacer(Modifier.height(10.dp))
@@ -870,7 +1345,7 @@ private fun TextInputCard(
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
-                textStyle = TextStyle(color = Ink, fontSize = 13.sp),
+                textStyle = TextStyle(color = Ink, fontSize = 14.sp),
                 cursorBrush = SolidColor(accent),
                 maxLines = 3,
                 decorationBox = { inner ->
@@ -878,7 +1353,7 @@ private fun TextInputCard(
                         Text(
                             block.str("placeholder").ifBlank { "Type here…" },
                             color = Faint,
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                         )
                     }
                     inner()
@@ -889,7 +1364,7 @@ private fun TextInputCard(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .height(46.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(if (ready) accent else Color(0x14FFFFFF))
                 .clickable(enabled = ready) {
@@ -1076,6 +1551,175 @@ private fun InlineSlider(    initial: Float,
     }
 }
 
+/* ----------------------------- touchpad ----------------------------- */
+
+/**
+ * A big, quiet trackpad: one finger moves, a tap clicks, two fingers scroll.
+ * Every pointer change is consumed so the deck's page swipe never steals a drag.
+ */
+@Composable
+private fun TouchpadCard(
+    block: JSONObject,
+    accent: Color,
+    modifier: Modifier,
+    onAction: (String, JSONObject?) -> Unit,
+) {
+    val sensitivity = block.num("sensitivity", 1.0).toFloat().coerceIn(0.25f, 3f)
+    var dot by remember { mutableStateOf(Offset.Unspecified) }
+    var touched by remember { mutableStateOf(false) }
+
+    GlassPanel(modifier.fillMaxSize(), contentPadding = PaddingValues(0.dp)) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 13.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    block.str("label").uppercase().ifBlank { "TOUCHPAD" },
+                    color = Muted,
+                    fontSize = 10.5.sp,
+                    letterSpacing = 2.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    String.format("%.1fx", sensitivity),
+                    color = Faint,
+                    fontSize = 10.sp,
+                )
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 10.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0x1F000000))
+                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(18.dp))
+                    .pointerInput(sensitivity) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            touched = true
+                            var last = down.position
+                            var lastSent = down.uptimeMillis
+                            var ax = 0f
+                            var ay = 0f
+                            var travel = 0f
+                            var scrollY = down.position.y
+                            var twoFinger = false
+                            dot = down.position
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pressed = event.changes.filter { it.pressed }
+                                if (pressed.isEmpty()) {
+                                    if (!twoFinger && travel < 14f) {
+                                        onAction("tap", JSONObject().put("button", "left"))
+                                    }
+                                    dot = Offset.Unspecified
+                                    break
+                                }
+                                if (pressed.size >= 2) {
+                                    twoFinger = true
+                                    val avgY = pressed.map { it.position.y }.average().toFloat()
+                                    val dy = avgY - scrollY
+                                    scrollY = avgY
+                                    if (abs(dy) > 0.7f) {
+                                        onAction("scroll", JSONObject().put("dy", -dy / 3f))
+                                    }
+                                    dot = pressed.first().position
+                                    pressed.forEach { it.consume() }
+                                    continue
+                                }
+                                val change = pressed.first()
+                                val delta = change.position - last
+                                last = change.position
+                                if (delta.getDistance() > 0f) {
+                                    travel += delta.getDistance()
+                                    ax += delta.x
+                                    ay += delta.y
+                                    dot = change.position
+                                    val now = change.uptimeMillis
+                                    if (now - lastSent >= 16) {
+                                        lastSent = now
+                                        if (abs(ax) >= 0.5f || abs(ay) >= 0.5f) {
+                                            onAction(
+                                                "move",
+                                                JSONObject()
+                                                    .put("dx", ax * sensitivity)
+                                                    .put("dy", ay * sensitivity),
+                                            )
+                                            ax = 0f
+                                            ay = 0f
+                                        }
+                                    }
+                                }
+                                change.consume()
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                val hint = block.str("hint")
+                if (hint.isNotBlank() && !touched) {
+                    Text(
+                        hint,
+                        color = Faint,
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 30.dp),
+                    )
+                }
+                Canvas(Modifier.fillMaxSize()) {
+                    val p = dot
+                    if (p != Offset.Unspecified) {
+                        drawCircle(accent.copy(alpha = 0.20f), radius = 24.dp.toPx(), center = p)
+                        drawCircle(accent.copy(alpha = 0.8f), radius = 3.dp.toPx(), center = p)
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TouchButton("LEFT", accent, Modifier.weight(1f)) {
+                    onAction("tap", JSONObject().put("button", "left"))
+                }
+                TouchButton("RIGHT", accent, Modifier.weight(1f)) {
+                    onAction("tap", JSONObject().put("button", "right"))
+                }
+                TouchButton("MIDDLE", accent, Modifier.weight(1f)) {
+                    onAction("tap", JSONObject().put("button", "middle"))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TouchButton(label: String, accent: Color, modifier: Modifier, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
+    Box(
+        modifier
+            .height(38.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(if (flash) accent.copy(alpha = 0.28f) else Color(0x14FFFFFF))
+            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(11.dp))
+            .pressable(interaction, onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (flash) Ink else Muted,
+            fontSize = 11.5.sp,
+            letterSpacing = 1.4.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 /* ----------------------------- shortcuts ----------------------------- */
 
 @Composable
@@ -1095,30 +1739,38 @@ private fun ShortcutsCard(
     } else {
         serverColumns
     }
-    GlassPanel(Modifier.fillMaxWidth()) {        val title = block.str("title")
+    GlassPanel(Modifier.fillMaxWidth()) {
+        val title = block.str("title")
         if (title.isNotBlank()) {
-            Text(title.uppercase(), color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Text(title.uppercase(), color = Muted, fontSize = 10.5.sp, letterSpacing = 2.sp)
             Spacer(Modifier.height(14.dp))
         }
-        var index = 0
-        while (index < items.length()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (c in 0 until columns) {
-                    if (index < items.length()) {
-                        val item = items.getJSONObject(index)
-                        ShortcutTile(
-                            label = item.str("label"),
-                            iconUrl = endpoint + item.str("icon"),
-                            accent = accent,
-                            modifier = Modifier.weight(1f),
-                        ) { onLaunch(item.str("id")) }
-                    } else {
-                        Spacer(Modifier.weight(1f))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // a tablet has room for more tiles in the same two rows
+            val auto = (maxWidth.value / 190f).toInt().coerceIn(3, 6)
+            val cols = maxOf(columns, auto).coerceAtMost(items.length().coerceAtLeast(1))
+            Column(Modifier.fillMaxWidth()) {
+                var index = 0
+                while (index < items.length()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (c in 0 until cols) {
+                            if (index < items.length()) {
+                                val item = items.getJSONObject(index)
+                                ShortcutTile(
+                                    label = item.str("label"),
+                                    iconUrl = endpoint + item.str("icon"),
+                                    accent = accent,
+                                    modifier = Modifier.weight(1f),
+                                ) { onLaunch(item.str("id")) }
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                            index++
+                        }
                     }
-                    index++
+                    if (index < items.length()) Spacer(Modifier.height(10.dp))
                 }
             }
-            if (index < items.length()) Spacer(Modifier.height(10.dp))
         }
     }
 }
@@ -1146,22 +1798,22 @@ private fun ShortcutTile(
             )
             .border(1.dp, Color(0x26FFFFFF), shape)
             .pressable(interaction, onClick)
-            .padding(vertical = if (compact) 10.dp else 14.dp),
+            .padding(vertical = if (compact) 12.dp else 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AsyncImage(
             model = iconUrl,
             contentDescription = label,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(if (compact) 32.dp else 42.dp)
-                .clip(RoundedCornerShape(8.dp)),
+                .size(if (compact) 44.dp else 54.dp)
+                .clip(RoundedCornerShape(9.dp)),
         )
-        Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
+        Spacer(Modifier.height(if (compact) 7.dp else 10.dp))
         Text(
             label,
             color = Ink.copy(alpha = 0.9f),
-            fontSize = if (compact) 10.5.sp else 10.5.sp,
+            fontSize = 12.5.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 4.dp),

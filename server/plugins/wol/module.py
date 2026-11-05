@@ -38,7 +38,7 @@ def _parse_targets(raw: str) -> list[dict]:
         if len(re.sub(r"[^0-9A-Fa-f]", "", mac)) != 12:
             continue
         out.append({"name": name.strip() or mac.upper(), "mac": mac})
-    return out[:8]
+    return out[:24]
 
 
 class Module(BaseModule):

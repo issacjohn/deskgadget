@@ -243,3 +243,21 @@ fun GlassPill(
 
 fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
     this.clickable(interactionSource = null, indication = null, onClick = onClick)
+
+/**
+ * True while pressed and for a short moment after release, so a fast tap is
+ * still visible as a highlight.
+ */
+@Composable
+fun rememberTapFlash(pressed: Boolean, holdMs: Long = 130L): Boolean {
+    var flash by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            flash = true
+        } else {
+            kotlinx.coroutines.delay(holdMs)
+            flash = false
+        }
+    }
+    return flash
+}

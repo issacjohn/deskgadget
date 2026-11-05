@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -37,12 +39,19 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Newspaper
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material.icons.rounded.Window
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,8 +73,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -436,6 +447,34 @@ fun DeckScreen(
     val scope = rememberCoroutineScope()
     var toastVisible by remember { mutableStateOf(false) }
     var supportOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var update by remember { mutableStateOf<AppUpdate?>(null) }
+    var upToDate by remember { mutableStateOf(false) }
+    var checking by remember { mutableStateOf(false) }
+
+    // once every three days, quietly look for a newer release
+    LaunchedEffect(Unit) {
+        if (Updater.shouldAutoCheck(context)) {
+            Updater.markChecked(context)
+            val found = withContext(Dispatchers.IO) { Updater.check(context) }
+            if (found != null) update = found
+        }
+    }
+
+    val checkNow: () -> Unit = {
+        if (!checking) {
+            checking = true
+            scope.launch {
+                val found = withContext(Dispatchers.IO) { Updater.check(context) }
+                checking = false
+                if (found != null) {
+                    update = found
+                } else {
+                    upToDate = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(state.toastId) {
         if (state.toastId > 0) {
@@ -573,9 +612,15 @@ fun DeckScreen(
 
         if (supportOpen) {
             SupportSheet(
+                version = Updater.currentVersion(context),
+                checking = checking,
                 onCoffee = {
                     supportOpen = false
                     onOpenUrl(COFFEE_URL)
+                },
+                onCheckUpdates = {
+                    supportOpen = false
+                    checkNow()
                 },
                 onDisconnect = {
                     supportOpen = false
@@ -583,6 +628,131 @@ fun DeckScreen(
                 },
                 onClose = { supportOpen = false },
             )
+        }
+
+        update?.let { found ->
+            UpdateDialog(
+                update = found,
+                onDownload = {
+                    Updater.markChecked(context)
+                    Updater.open(context, found.apkUrl ?: found.pageUrl)
+                    update = null
+                },
+                onLater = {
+                    Updater.markChecked(context)
+                    update = null
+                },
+            )
+        }
+
+        if (upToDate) {
+            InfoDialog(
+                title = "You're up to date",
+                body = "DeskGadget ${Updater.currentVersion(context)} is the latest version.",
+                onClose = { upToDate = false },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateDialog(update: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
+    Dialog(onDismissRequest = onLater) {
+        Column(
+            Modifier
+                .width(370.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xFB0C1119))
+                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(22.dp))
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Text(
+                "UPDATE AVAILABLE",
+                color = Color(0xFF7CE7FF),
+                fontSize = 9.5.sp,
+                letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(
+                "DeskGadget ${update.version}",
+                color = Ink,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text("A newer build is ready on GitHub.", color = Faint, fontSize = 11.5.sp)
+            if (update.notes.isNotBlank()) {
+                Spacer(Modifier.height(13.dp))
+                Text(
+                    update.notes,
+                    color = Ink.copy(alpha = 0.86f),
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    modifier = Modifier
+                        .heightIn(max = 156.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(Color(0x14FFFFFF))
+                        .clickable(onClick = onLater),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Later", color = Ink, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(Color(0xFF7CE7FF))
+                        .clickable(onClick = onDownload),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (update.apkUrl != null) "Download" else "Open release",
+                        color = Color(0xFF06121A),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoDialog(title: String, body: String, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose) {
+        Column(
+            Modifier
+                .width(320.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFB0C1119))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Text(title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(5.dp))
+            Text(body, color = Faint, fontSize = 12.sp, lineHeight = 17.sp)
+            Spacer(Modifier.height(16.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(Color(0x14FFFFFF))
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("OK", color = Ink, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -595,7 +765,10 @@ private const val COFFEE_URL = "https://buymeacoffee.com/issac_john"
  */
 @Composable
 private fun SupportSheet(
+    version: String,
+    checking: Boolean,
     onCoffee: () -> Unit,
+    onCheckUpdates: () -> Unit,
     onDisconnect: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -604,7 +777,7 @@ private fun SupportSheet(
             Modifier
                 .width(304.dp)
                 .clip(RoundedCornerShape(22.dp))
-                .background(Color(0xF00C1119))
+                .background(Color(0xFB0C1119))
                 .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
                 .padding(horizontal = 18.dp, vertical = 16.dp),
         ) {
@@ -635,6 +808,25 @@ private fun SupportSheet(
                 Text("Buy me a coffee", color = Ink.copy(alpha = 0.9f), fontSize = 13.sp)
                 Spacer(Modifier.weight(1f))
                 Text("buymeacoffee.com", color = Faint, fontSize = 9.5.sp)
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onCheckUpdates)
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("↻", color = Ink.copy(alpha = 0.9f), fontSize = 14.sp)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (checking) "Checking for updates…" else "Check for updates",
+                    color = Ink.copy(alpha = 0.9f),
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.weight(1f))
+                Text("v$version", color = Faint, fontSize = 9.5.sp)
             }
 
             Row(
@@ -806,16 +998,23 @@ private fun ModuleTile(
 ) {
     val accent = hexColor(page.accent)
     val shape = RoundedCornerShape(if (compact) 16.dp else 20.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
     Column(
         modifier
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(accent.copy(alpha = 0.18f), Color(0x08FFFFFF))
+                    if (flash) {
+                        listOf(accent.copy(alpha = 0.38f), accent.copy(alpha = 0.16f))
+                    } else {
+                        listOf(accent.copy(alpha = 0.18f), Color(0x08FFFFFF))
+                    }
                 )
             )
             .border(1.dp, Color(0x22FFFFFF), shape)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(
                 horizontal = if (compact) 11.dp else 13.dp,
                 vertical = if (compact) 9.dp else 12.dp,
@@ -1007,6 +1206,13 @@ private fun iconForModule(id: String): ImageVector = when (id) {
     "media" -> Icons.Rounded.MusicNote
     "shortcuts" -> Icons.Rounded.GridView
     "audiomesh" -> Icons.Rounded.GraphicEq
+    "news" -> Icons.Rounded.Newspaper
+    "windows" -> Icons.Rounded.Window
+    "clipboard" -> Icons.Rounded.ContentPaste
+    "wol" -> Icons.Rounded.PowerSettingsNew
+    "drives" -> Icons.Rounded.Storage
+    "timer" -> Icons.Rounded.Timer
+    "touchpad" -> Icons.Rounded.TouchApp
     else -> Icons.Rounded.Widgets
 }
 
@@ -1065,7 +1271,7 @@ private fun PageView(
     compact: Boolean,
 ) {
     if (!page.refreshable) {
-        PageBody(page, endpoint, onAction, compact)
+        AdaptiveBody(page, endpoint, onAction, compact)
         return
     }
 
@@ -1087,7 +1293,29 @@ private fun PageView(
         },
         modifier = Modifier.fillMaxSize(),
     ) {
-        PageBody(page, endpoint, onAction, compact)
+        AdaptiveBody(page, endpoint, onAction, compact)
+    }
+}
+
+/**
+ * Phones keep their current sizing; tablets and other big panels get larger
+ * type (up to 1.4x) so labels stay legible from across a desk.
+ */
+@Composable
+private fun AdaptiveBody(
+    page: PageData,
+    endpoint: String,
+    onAction: (String, String, JSONObject?) -> Unit,
+    compact: Boolean,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val base = LocalDensity.current
+        val boost = (maxWidth.value / 900f).coerceIn(1f, 1.4f)
+        CompositionLocalProvider(
+            LocalDensity provides Density(base.density, base.fontScale * boost)
+        ) {
+            PageBody(page, endpoint, onAction, compact)
+        }
     }
 }
 
@@ -1103,6 +1331,23 @@ private fun PageBody(
 
     // A page with a single block (the launcher, or a one-widget plugin) stretches
     // to fill the whole viewport instead of leaving dead space underneath.
+    if (blocks.size == 1 && blocks[0].optString("type") == "touchpad") {
+        // A trackpad has to own the whole panel, including the height, so it is
+        // laid out without the scrolling wrapper used by content pages.
+        BlockView(
+            block = blocks[0],
+            module = page.id,
+            accent = accent,
+            endpoint = endpoint,
+            onAction = { action, payload -> onAction(page.id, action, payload) },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = if (compact) 6.dp else 20.dp)
+                .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
+        )
+        return
+    }
+
     if (blocks.size <= 1) {
         val scroll = rememberScrollState()
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -1111,7 +1356,7 @@ private fun PageBody(
                     .fillMaxWidth()
                     .heightIn(min = maxHeight)
                     .verticalScroll(scroll)
-                    .padding(horizontal = if (compact) 18.dp else 20.dp)
+                    .padding(horizontal = if (compact) 6.dp else 20.dp)
                     .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -1140,25 +1385,131 @@ private fun PageBody(
         return
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // Only the System page is dense enough to need scaling; every other page
+    // keeps its natural size and scrolls if it has to.
+    if (page.id == "system") {
         AutoFit(Modifier.fillMaxSize()) {
+            BlocksColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (compact) 6.dp else 20.dp)
+                    .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
+                blocks = blocks,
+                module = page.id,
+                accent = accent,
+                endpoint = endpoint,
+                compact = compact,
+                onAction = onAction,
+            )
+        }
+        return
+    }
+
+    val scroll = rememberScrollState()
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewport = maxHeight
         Column(
             Modifier
-                .fillMaxWidth()
-                .padding(horizontal = if (compact) 18.dp else 20.dp)
+                .fillMaxSize()
+                .verticalScroll(scroll)
+                .padding(horizontal = if (compact) 6.dp else 20.dp)
                 .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
         ) {
-        if (compact) {
+            // short pages sit in the middle of the panel instead of clinging to
+            // the top; tall ones still scroll normally
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = (viewport - 12.dp).coerceAtLeast(0.dp)),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                BlocksColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    blocks = blocks,
+                    module = page.id,
+                    accent = accent,
+                    endpoint = endpoint,
+                    compact = compact,
+                    onAction = onAction,
+                )
+            }
+        }
+        if (scroll.canScrollForward) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0xE604060A))
+                        )
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun BlocksColumn(
+    modifier: Modifier,
+    blocks: List<JSONObject>,
+    module: String,
+    accent: Color,
+    endpoint: String,
+    compact: Boolean,
+    onAction: (String, String, JSONObject?) -> Unit,
+) {
+    BoxWithConstraints(modifier) {
+    val threeUp = compact && maxWidth >= 700.dp && blocks.size >= 6
+    Column(Modifier.fillMaxWidth()) {
+        if (compact && blocks.any { it.has("col") }) {
+            val columns = blocks.groupBy { it.optInt("col", 0) }.toSortedMap().values.toList()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                columns.forEach { col ->
+                    Column(Modifier.weight(1f)) {
+                        col.forEach { block ->
+                            BlockView(
+                                block = block,
+                                module = module,
+                                accent = accent,
+                                endpoint = endpoint,
+                                onAction = { action, payload -> onAction(module, action, payload) },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                }
+            }
+        } else if (threeUp) {
+            val columns = balanceColumns(blocks, 3)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                columns.forEach { col ->
+                    Column(Modifier.weight(1f)) {
+                        col.forEach { block ->
+                            BlockView(
+                                block = block,
+                                module = module,
+                                accent = accent,
+                                endpoint = endpoint,
+                                onAction = { action, payload -> onAction(module, action, payload) },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                }
+            }
+        } else if (compact) {
             val (left, right) = balanceBlocks(blocks)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
                     left.forEach { block ->
                         BlockView(
                             block = block,
-                            module = page.id,
+                            module = module,
                             accent = accent,
                             endpoint = endpoint,
-                            onAction = { action, payload -> onAction(page.id, action, payload) },
+                            onAction = { action, payload -> onAction(module, action, payload) },
                         )
                         Spacer(Modifier.height(12.dp))
                     }
@@ -1167,10 +1518,10 @@ private fun PageBody(
                     right.forEach { block ->
                         BlockView(
                             block = block,
-                            module = page.id,
+                            module = module,
                             accent = accent,
                             endpoint = endpoint,
-                            onAction = { action, payload -> onAction(page.id, action, payload) },
+                            onAction = { action, payload -> onAction(module, action, payload) },
                         )
                         Spacer(Modifier.height(12.dp))
                     }
@@ -1180,17 +1531,31 @@ private fun PageBody(
             blocks.forEach { block ->
                 BlockView(
                     block = block,
-                    module = page.id,
+                    module = module,
                     accent = accent,
                     endpoint = endpoint,
-                    onAction = { action, payload -> onAction(page.id, action, payload) },
+                    onAction = { action, payload -> onAction(module, action, payload) },
                 )
                 Spacer(Modifier.height(13.dp))
             }
         }
-        }
-        }
     }
+    }
+}
+
+/**
+ * Splits blocks into [count] stacks, greedily handing each block to the shortest
+ * stack so the columns end up level. Order is preserved within a column.
+ */
+private fun balanceColumns(blocks: List<JSONObject>, count: Int): List<List<JSONObject>> {
+    val columns = MutableList(count) { mutableListOf<JSONObject>() }
+    val heights = FloatArray(count)
+    for (block in blocks) {
+        val target = heights.indices.minBy { heights[it] }
+        columns[target].add(block)
+        heights[target] += estimateHeight(block)
+    }
+    return columns
 }
 
 /**
@@ -1221,7 +1586,8 @@ private fun AutoFit(
             1f
         }
         layout(width, height) {
-            placeable.placeWithLayer(0, 0) {
+            val x = ((width - placeable.width * scale) / 2f).toInt().coerceAtLeast(0)
+            placeable.placeWithLayer(x, 0) {
                 scaleX = scale
                 scaleY = scale
                 transformOrigin = TransformOrigin(0f, 0f)

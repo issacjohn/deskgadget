@@ -27,21 +27,33 @@ Windows server · Android client · plugins anyone can write
 |---|---|
 | ![Home](docs/screenshots/home.jpg) | ![Media](docs/screenshots/media.jpg) |
 
-| News — with your own topics | Windows — switch what is in front |
+| News — with your own topics | Weather — today, next hours, this week |
 |---|---|
-| ![News](docs/screenshots/news.jpg) | ![Windows](docs/screenshots/windows.jpg) |
+| ![News](docs/screenshots/news.jpg) | ![Weather](docs/screenshots/weather.jpg) |
+
+| Windows — switch what is in front | Shortcuts — launch anything |
+|---|---|
+| ![Windows](docs/screenshots/windows.jpg) | ![Shortcuts](docs/screenshots/shortcuts.jpg) |
 
 | Clipboard — both ways | Wake on LAN |
 |---|---|
 | ![Clipboard](docs/screenshots/clipboard.jpg) | ![Wake on LAN](docs/screenshots/wol.jpg) |
 
-| System | Dashboard |
+| System | Drives |
 |---|---|
-| ![System](docs/screenshots/system.jpg) | ![Dashboard](docs/screenshots/dashboard.jpg) |
+| ![System](docs/screenshots/system.jpg) | ![Drives](docs/screenshots/drives.jpg) |
+
+| Touchpad — the phone as a mouse | Dashboard |
+|---|---|
+| ![Touchpad](docs/screenshots/touchpad.jpg) | ![Dashboard](docs/screenshots/dashboard.jpg) |
 
 | OLED Black | White |
 |---|---|
 | ![OLED](docs/screenshots/theme-black.jpg) | ![White](docs/screenshots/theme-white.jpg) |
+
+| Sunset | Ocean |
+|---|---|
+| ![Sunset](docs/screenshots/theme-sunset.jpg) | ![Ocean](docs/screenshots/theme-ocean.jpg) |
 
 ---
 
@@ -63,16 +75,17 @@ Windows server · Android client · plugins anyone can write
 
 | Module | What it does |
 |---|---|
-| **System** | CPU, RAM, disk and network live, public/LAN IP, latency, battery or AC state, uptime, top processes, sparkline, plus quick actions (lock, screen off, desktop, screenshot) |
+| **System** | CPU, RAM and disk rings, live network throughput, public/LAN IP, latency, battery or AC state, uptime, plus quick actions (lock, screen off, desktop, screenshot) |
 | **Media** | Now playing with artwork and seek, PC volume, transport, mute **each output**, mute **each microphone** |
 | **News** | Multi-region, multi-topic headlines with publisher logos, plus **free-text topics of your own**; tap opens the article on the PC, in front |
 | **Shortcuts** | Launch Windows apps; **Steam games detected automatically** with cover art |
-| **Windows** | Every open window; tap to bring it forward, or send it to the taskbar |
+| **Windows** | Every open window with its app icon, in two columns; tap to bring it forward |
 | **Wake on LAN** | Magic packet to another machine, straight from the panel |
 | **Clipboard** | Read the PC clipboard, and send text back to it from the phone |
-| **Weather** | Current + hourly + 7-day, no API key |
-| **Drives** | Ring per volume, free/total meters |
+| **Weather** | Current conditions with feels-like/humidity/wind, the next hours, and a 4-day outlook, no API key |
+| **Drives** | Every volume with a free space bar and totals |
 | **Timer** | Countdown / Pomodoro with start, +5, reset |
+| **Touchpad** | The phone as a trackpad: drag to move, tap to click, two fingers to scroll, right/middle buttons |
 | **AudioMesh** | Example third-party module (ship your own the same way) |
 
 Each is its own swipeable page, and the home grid shows every enabled module with
@@ -80,11 +93,12 @@ its live value. Tick only what a given phone should show.
 
 ### Adding and removing modules
 
-**Browse modules** in the dashboard lists everything in
+**Add or remove modules** in the dashboard lists everything in
 [`catalog.json`](catalog.json) — the bundled set plus anything published to this
-repo. Add installs it (downloads `manifest.json` + `module.py` if it is not
-already on disk), Remove moves it to `plugins_removed/` so it can be added back
-later. Modules you removed are never re-seeded by an upgrade.
+repo. Each module row also has a bin button. Add installs it (downloads
+`manifest.json` + `module.py` if it is not already on disk); remove moves it to
+`plugins_removed/` so it can be added back later. Modules you removed are never
+re-seeded by an upgrade.
 
 ## Architecture
 
@@ -104,9 +118,9 @@ travel back on the same socket and the module pushes again immediately. The
 dashboard has its own socket (`/ws/dashboard`); nothing polls in a loop.
 
 **The phone is a renderer.** Modules emit a tree of blocks — `hero`, `gauges`,
-`sparkline`, `meters`, `kv`, `list`, `controls`, `slider`, `shortcuts`, `news`,
-`toggles` — and the app draws them. Adding a module therefore never requires an
-app update, which is the whole point.
+`sparkline`, `meters`, `kv`, `list`, `note`, `hours`, `controls`, `slider`,
+`shortcuts`, `news`, `toggles`, `touchpad` — and the app draws them. Adding a
+module therefore never requires an app update, which is the whole point.
 
 ## Install
 
@@ -157,8 +171,16 @@ Then **Rescan** in the dashboard, or zip the folder and drop it in. See
 
 ## Themes
 
-Liquid · Full Glass · OLED Black · White · Graphite · Aurora — picked per device
-in the dashboard, applied live, remembered across reconnects.
+Liquid · Full Glass · OLED Black · White · Graphite · Aurora · Sunset · Ocean —
+picked per device in the dashboard. The dashboard follows the same theme, applied
+live, remembered across reconnects.
+
+## Updates
+
+The app checks the public releases feed at most once every three days. When a
+newer build exists it shows the version and that release's changelog, and lets
+you download or dismiss it. **Check for updates** in the support sheet (the
+heart) runs the check on demand.
 
 ## Build
 
@@ -173,6 +195,7 @@ python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 
 ## Roadmap
 
+- Phone camera and microphone bridge (needs a virtual-device driver on Windows)
 - Home Assistant, GitHub notifications, Steam deals
 - Per-module page layouts on the phone
 

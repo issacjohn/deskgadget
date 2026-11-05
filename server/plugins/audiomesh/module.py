@@ -428,7 +428,7 @@ class Module(BaseModule):
 
         if self.endpoints:
             rows = []
-            for endpoint in self.endpoints[:8]:
+            for endpoint in self.endpoints[:16]:
                 kind = str(endpoint.get("kind") or "Output")
                 buffer_ms = endpoint.get("bufferMs")
                 delay_ms = int(endpoint.get("delayMs") or 0)

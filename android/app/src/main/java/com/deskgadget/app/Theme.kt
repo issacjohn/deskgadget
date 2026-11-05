@@ -161,17 +161,17 @@ val BlackPalette = Palette(
     // no colour field at all, so the background stays at true #000000
     blobs = emptyList(),
     vignette = 0f,
-    glassTop = Color(0x0AFFFFFF),
-    glassBottom = Color(0x04FFFFFF),
-    borderTop = Color(0x2EFFFFFF),
-    borderMid = Color(0x10FFFFFF),
-    borderBottom = Color(0x1AFFFFFF),
-    sheenTop = Color(0x0FFFFFFF),
-    sheenBottom = Color(0x05FFFFFF),
-    blur = 24f,
+    glassTop = Color(0x0FFFFFFF),
+    glassBottom = Color(0x07FFFFFF),
+    borderTop = Color(0x36FFFFFF),
+    borderMid = Color(0x16FFFFFF),
+    borderBottom = Color(0x22FFFFFF),
+    sheenTop = Color(0x14FFFFFF),
+    sheenBottom = Color(0x07FFFFFF),
+    blur = 20f,
     ink = Color(0xFFFFFFFF),
-    muted = Color(0xFFA2A8B4),
-    faint = Color(0xFF6B7280),
+    muted = Color(0xFFAEB5C2),
+    faint = Color(0xFF7C8496),
 )
 
 /** Bright frosted daylight: white glass over pastel, dark type. */
@@ -201,6 +201,54 @@ val WhitePalette = Palette(
     light = true,
 )
 
+/** Warm evening light: amber, coral and a violet edge. */
+val SunsetPalette = Palette(
+    id = "sunset",
+    name = "Sunset",
+    bgTop = Color(0xFF150810),
+    bgMid = Color(0xFF1C0D16),
+    bgBottom = Color(0xFF0B0508),
+    blobs = listOf(
+        Blob(Color(0xFFFF7A45), 0.44f, 0.18f, 0.22f, 0.95f, 0.24f, 0f),
+        Blob(Color(0xFFFF3D7F), 0.38f, 0.84f, 0.30f, 0.86f, 0.20f, 1.8f),
+        Blob(Color(0xFFFFC371), 0.26f, 0.45f, 0.90f, 0.88f, 0.18f, 2.6f),
+        Blob(Color(0xFF7A3BFF), 0.30f, 0.78f, 0.82f, 0.80f, 0.26f, 3.2f),
+    ),
+    vignette = 0.78f,
+    glassTop = Color(0x16FFFFFF),
+    glassBottom = Color(0x09FFFFFF),
+    borderTop = Color(0x5AFFFFFF),
+    borderMid = Color(0x14FFFFFF),
+    borderBottom = Color(0x26FFFFFF),
+    sheenTop = Color(0x1FFFFFFF),
+    sheenBottom = Color(0x0CFFFFFF),
+    blur = 30f,
+)
+
+/** Deep water: blue and teal with a cool, quiet feel. */
+val OceanPalette = Palette(
+    id = "ocean",
+    name = "Ocean",
+    bgTop = Color(0xFF03101A),
+    bgMid = Color(0xFF051824),
+    bgBottom = Color(0xFF020A10),
+    blobs = listOf(
+        Blob(Color(0xFF1D7BFF), 0.42f, 0.16f, 0.20f, 0.95f, 0.24f, 0f),
+        Blob(Color(0xFF00D6C6), 0.34f, 0.88f, 0.26f, 0.85f, 0.20f, 2f),
+        Blob(Color(0xFF0A3B6B), 0.30f, 0.42f, 0.90f, 0.90f, 0.18f, 3f),
+        Blob(Color(0xFF4CC9FF), 0.24f, 0.78f, 0.84f, 0.80f, 0.26f, 2.4f),
+    ),
+    vignette = 0.82f,
+    glassTop = Color(0x12FFFFFF),
+    glassBottom = Color(0x07FFFFFF),
+    borderTop = Color(0x42FFFFFF),
+    borderMid = Color(0x12FFFFFF),
+    borderBottom = Color(0x20FFFFFF),
+    sheenTop = Color(0x18FFFFFF),
+    sheenBottom = Color(0x0AFFFFFF),
+    blur = 26f,
+)
+
 val Palettes: List<Palette> = listOf(
     LiquidPalette,
     FullGlassPalette,
@@ -208,6 +256,8 @@ val Palettes: List<Palette> = listOf(
     WhitePalette,
     GraphitePalette,
     AuroraPalette,
+    SunsetPalette,
+    OceanPalette,
 )
 
 fun paletteFor(id: String?): Palette = Palettes.firstOrNull { it.id == id } ?: LiquidPalette

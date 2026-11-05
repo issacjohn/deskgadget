@@ -106,6 +106,10 @@ class Module(BaseModule):
             self._toggle_endpoint(str(payload.get("id", "")))
         elif action == "play_pause":
             self._media_command("play_pause", VK_MEDIA_PLAY_PAUSE)
+            # flip the local state now so the icon changes with the audio;
+            # the next SMTC poll corrects it if the player disagreed
+            if self.now:
+                self.now["playing"] = not bool(self.now.get("playing"))
         elif action == "next":
             self._media_command("next", VK_MEDIA_NEXT)
         elif action == "prev":
@@ -115,6 +119,12 @@ class Module(BaseModule):
             threading.Thread(
                 target=smtc.seek, args=(seconds,), name="smtc-seek", daemon=True
             ).start()
+
+    def _toggle_mute(self) -> None:
+        ep = self._endpoint()
+        muted = not bool(ep.GetMute())
+        ep.SetMute(1 if muted else 0, None)
+        self.muted = muted
 
     def _endpoint_for(self, device_id: str):
         """Both capture and render endpoints are activated the same way."""
@@ -256,6 +266,7 @@ class Module(BaseModule):
 
     def page(self) -> dict:
         pct = round(self.volume * 100)
+        playing = bool((self.now or {}).get("playing"))
         blocks: list[dict] = []
         now = self.now or {}
         if now.get("title"):
@@ -294,14 +305,14 @@ class Module(BaseModule):
                 "items": [
                     {
                         "id": "toggle_mute",
-                        "icon": "mute" if not self.muted else "volume_up",
-                        "label": "Mute",
+                        "icon": "mute" if self.muted else "volume_up",
+                        "label": "Unmute" if self.muted else "Mute",
                     },
                     {"id": "prev", "icon": "prev", "label": "Previous"},
                     {
                         "id": "play_pause",
-                        "icon": "play_pause",
-                        "label": "Play / Pause",
+                        "icon": "pause" if playing else "play",
+                        "label": "Pause" if playing else "Play",
                         "primary": True,
                     },
                     {"id": "next", "icon": "next", "label": "Next"},

@@ -104,37 +104,24 @@ class Module(BaseModule):
         collapsed = " ".join(text.split())
         preview = collapsed[:180] + ("…" if len(collapsed) > 180 else "")
 
-        if not text.strip():
-            head = {
-                "type": "hero",
-                "label": "PC CLIPBOARD",
-                "value": "EMPTY",
-                "unit": "",
-                "sub": "Copy something on the PC, or send text below",
-                "accent": self.accent,
+        body = text.strip()
+        if body:
+            note = {
+                "type": "note",
+                "label": "ON THE PC CLIPBOARD",
+                "text": collapsed[:600] + ("…" if len(collapsed) > 600 else ""),
+                "meta": f"{len(text)} chars · {text.count(chr(10)) + 1} lines",
             }
         else:
-            head = {
-                "type": "kv",
-                "items": [
-                    {"label": "LENGTH", "value": f"{len(text)} chars"},
-                    {"label": "LINES", "value": str(text.count(chr(10)) + 1)},
-                ],
+            note = {
+                "type": "note",
+                "label": "PC CLIPBOARD",
+                "text": "Nothing copied yet",
+                "meta": "Copy something on the PC, or send text across",
             }
 
         blocks = [
-            head,
-            {
-                "type": "list",
-                "title": "ON THE PC CLIPBOARD",
-                "items": [
-                    {
-                        "title": preview or "Empty",
-                        "sub": (text.strip().splitlines() or [""])[0][:70],
-                        "value": "",
-                    }
-                ],
-            },
+            note,
             {
                 "type": "textinput",
                 "label": "SEND TEXT TO THE PC",

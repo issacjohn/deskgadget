@@ -57,6 +57,8 @@ class Module(BaseModule):
         self.batt_percent: float | None = None
         self.batt_plugged = True
         self.batt_left = ""
+        self.processes: list[dict] = []
+        self._tick = 0
 
     async def on_start(self) -> None:
         psutil.cpu_percent(None)
@@ -112,6 +114,12 @@ class Module(BaseModule):
                 "on AC" if battery.power_plugged else self._minutes(battery.secsleft)
             )
 
+        # process scan is expensive: run it off-loop, a few times a minute
+        self._tick += 1
+        task = getattr(self, "_scan_task", None)
+        if (task is None or task.done()) and (self._tick % 5 == 1 or not self.processes):
+            self._scan_task = asyncio.create_task(self._scan_processes())
+
         mem = psutil.virtual_memory()
         self.mem_percent = mem.percent
         self.mem_used = _gb(mem.used)
@@ -131,6 +139,30 @@ class Module(BaseModule):
         self.net_up = up
         self.net_down = down
 
+
+    async def _scan_processes(self) -> None:
+        try:
+            self.processes = await asyncio.to_thread(self._scan_processes_sync)
+        except Exception:
+            pass
+
+    def _scan_processes_sync(self) -> list[dict]:
+        rows = []
+        for proc in sorted(
+            psutil.process_iter(["pid", "name", "memory_info"]),
+            key=lambda p: (p.info.get("memory_info").rss if p.info.get("memory_info") else 0),
+            reverse=True,
+        )[:4]:
+            info = proc.info
+            mib = (info.get("memory_info").rss / (1024 ** 2)) if info.get("memory_info") else 0
+            rows.append(
+                {
+                    "title": (info.get("name") or "?")[:26],
+                    "sub": f"PID {info.get('pid')}",
+                    "value": f"{mib:.0f} MB",
+                }
+            )
+        return rows
 
     def _rate(self, bps: float) -> str:
         if bps > 1024 ** 2:
@@ -188,18 +220,24 @@ class Module(BaseModule):
 
         blocks = [
             {
-                "type": "gauges",
-                "items": gauges,
+                "type": "controls",
+                "style": "stack",
+                "col": 0,
+                "items": [
+                    {"id": "lock", "icon": "lock", "label": "Lock PC"},
+                    {"id": "monitor_off", "icon": "screen_off", "label": "Screen off"},
+                    {"id": "show_desktop", "icon": "desktop", "label": "Desktop"},
+                    {"id": "screenshot", "icon": "camera", "label": "Screenshot"},
+                ],
             },
             {
-                "type": "sparkline",
-                "label": "CPU HISTORY",
-                "points": list(self.history),
-                "min": 0,
-                "max": 100,
+                "type": "gauges",
+                "items": gauges,
+                "col": 1,
             },
             {
                 "type": "meters",
+                "col": 2,
                 "items": [
                     {
                         "label": "Memory",
@@ -217,57 +255,49 @@ class Module(BaseModule):
             },
             {
                 "type": "kv",
+                "col": 1,
                 "items": [
-                    {"label": "Download", "value": self._rate(self.net_down)},
-                    {"label": "Upload", "value": self._rate(self.net_up)},
-                    {"label": "Uptime", "value": uptime_text},
+                    {"label": "Down", "value": self._rate(self.net_down)},
+                    {"label": "Up", "value": self._rate(self.net_up)},
+                    {
+                        "label": "Ping",
+                        "value": (
+                            f"{self.latency:.0f} ms" if self.latency is not None else "—"
+                        ),
+                    },
                 ],
             },
             {
                 "type": "kv",
+                "col": 2,
                 "items": [
                     {"label": "Public IP", "value": self.public_ip},
                     {"label": "LAN IP", "value": lan_ip()},
-                    {
-                        "label": "Latency",
-                        "value": (
-                            f"{self.latency:.0f} ms"
-                            if self.latency is not None
-                            else "—"
-                        ),
-                    },
                 ],
             },
             (
                 {
                     "type": "kv",
+                    "col": 0,
                     "items": [
                         {"label": "Battery", "value": f"{self.batt_percent:.0f}%"},
                         {
                             "label": "Power",
                             "value": "AC" if self.batt_plugged else "Battery",
                         },
-                        {"label": "Time left", "value": self.batt_left},
+                        {"label": "Uptime", "value": uptime_text},
                     ],
                 }
                 if self.batt_percent is not None
                 else {
                     "type": "kv",
+                    "col": 0,
                     "items": [
-                        {"label": "Power", "value": "Plugged in"},
-                        {"label": "Battery", "value": "None on this PC"},
+                        {"label": "Power", "value": "AC"},
+                        {"label": "Battery", "value": "None"},
+                        {"label": "Uptime", "value": uptime_text},
                     ],
                 }
             ),
-            {
-                "type": "controls",
-                "style": "pill",
-                "items": [
-                    {"id": "lock", "icon": "mute", "label": "Lock PC"},
-                    {"id": "monitor_off", "icon": "mute", "label": "Screen off"},
-                    {"id": "show_desktop", "icon": "grid", "label": "Desktop"},
-                    {"id": "screenshot", "icon": "camera", "label": "Screenshot"},
-                ],
-            },
         ]
         return {"blocks": blocks}

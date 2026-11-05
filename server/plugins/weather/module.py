@@ -150,6 +150,8 @@ class Module(BaseModule):
         unit = "°F" if str(self.settings.get("units", "C")).upper() == "F" else "°C"
         temp = round(float(cur["temperature_2m"]))
 
+        # Details live inside the hero card so the page keeps its two columns
+        # and nothing important falls below the fold on a short panel.
         blocks = [
             {
                 "type": "hero",
@@ -159,14 +161,12 @@ class Module(BaseModule):
                 "sub": text,
                 "icon": icon,
                 "is_day": bool(cur.get("is_day", 1)),
-            },
-            {
-                "type": "kv",
-                "items": [
-                    {"label": "Feels like", "value": f"{round(float(cur['apparent_temperature']))}{unit}"},
+                "stats": [
+                    {"label": "Feels", "value": f"{round(float(cur['apparent_temperature']))}{unit}"},
                     {"label": "Humidity", "value": f"{round(float(cur['relative_humidity_2m']))}%"},
                     {"label": "Wind", "value": f"{round(float(cur['wind_speed_10m']))} km/h"},
                 ],
+                "col": 0,
             },
         ]
 
@@ -181,18 +181,17 @@ class Module(BaseModule):
                 start = i
                 break
         rows = []
-        for i in range(start, min(start + 6, len(times))):
+        for i in range(start, min(start + 4, len(times))):
             _, hicon = WMO.get(int(codes[i]), ("", "cloud"))
             rows.append(
                 {
-                    "title": "Now" if i == start else self._fmt_hour(times[i]),
-                    "sub": WMO.get(int(codes[i]), ("", ""))[0],
+                    "label": "Now" if i == start else self._fmt_hour(times[i]),
                     "value": f"{round(float(temps[i]))}{unit}",
                     "icon": hicon,
                 }
             )
         if rows:
-            blocks.append({"type": "list", "title": "NEXT HOURS", "items": rows})
+            blocks.append({"type": "hours", "items": rows, "col": 0})
 
         daily = self.data.get("daily", {})
         dtimes = daily.get("time", [])
@@ -200,7 +199,7 @@ class Module(BaseModule):
         dmin = daily.get("temperature_2m_min", [])
         dcodes = daily.get("weather_code", [])
         drows = []
-        for i in range(min(5, len(dtimes))):
+        for i in range(min(4, len(dtimes))):
             _, dicon = WMO.get(int(dcodes[i]), ("", "cloud"))
             drows.append(
                 {
@@ -211,6 +210,6 @@ class Module(BaseModule):
                 }
             )
         if drows:
-            blocks.append({"type": "list", "title": "THIS WEEK", "items": drows})
+            blocks.append({"type": "list", "title": "THIS WEEK", "items": drows, "col": 1})
 
         return {"blocks": blocks}

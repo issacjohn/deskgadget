@@ -100,69 +100,86 @@ def vivid(size: int) -> Image.Image:
     ).convert("RGBA")
 
 
+CARD_W = 1180
+CARD_H = 780
+CARD_R = 150
+
+
+def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
+    m = Image.new("L", size, 0)
+    ImageDraw.Draw(m).rounded_rectangle(
+        [0, 0, size[0] - 1, size[1] - 1], radius=radius, fill=255
+    )
+    return m
+
+
+def card_border(size: tuple[int, int], radius: int, alpha: int, width: int) -> Image.Image:
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    ImageDraw.Draw(layer).rounded_rectangle(
+        [0, 0, size[0] - 1, size[1] - 1],
+        radius=radius,
+        outline=(255, 255, 255, alpha),
+        width=width,
+    )
+    return layer
+
+
 def build_icon(with_background: bool = True) -> Image.Image:
     if with_background:
         bg = diagonal_gradient(
             (S, S),
-            [(0.0, (9, 13, 25)), (0.5, (6, 8, 16)), (1.0, (3, 4, 9))],
+            [(0.0, (10, 12, 22)), (0.55, (6, 8, 16)), (1.0, (3, 4, 9))],
         ).convert("RGBA")
 
         glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         gd = ImageDraw.Draw(glow)
-        gd.ellipse([CX - 980, CY - 900, CX + 380, CY + 420], fill=(88, 84, 255, 120))
-        gd.ellipse([CX + 40, CY - 620, CX + 980, CY + 520], fill=(0, 208, 190, 92))
-        gd.ellipse([CX - 640, CY + 220, CX + 520, CY + 1020], fill=(255, 61, 139, 76))
-        glow = glow.filter(ImageFilter.GaussianBlur(200))
+        gd.ellipse([CX - 1040, CY - 940, CX + 300, CY + 260], fill=(88, 84, 255, 120))
+        gd.ellipse([CX - 120, CY - 700, CX + 1020, CY + 400], fill=(0, 208, 190, 90))
+        gd.ellipse([CX - 760, CY + 160, CX + 420, CY + 1060], fill=(255, 61, 139, 74))
+        glow = glow.filter(ImageFilter.GaussianBlur(210))
         bg = Image.alpha_composite(bg, glow)
     else:
         bg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
-    gradient = vivid(S)
+    card = (CARD_W, CARD_H)
+    mask = rounded_mask(card, CARD_R)
 
-    # soft glow behind the ring
-    ring_glow = diamond_stroke(S, OUTER_R, 30, blur=54)
-    layer = gradient.copy()
-    layer.putalpha(ring_glow.point(lambda v: int(v * 0.5)))
-    bg = Image.alpha_composite(bg, layer)
-
-    # the ring itself
-    ring = diamond_stroke(S, OUTER_R, 15, blur=2)
-    layer = gradient.copy()
-    layer.putalpha(ring)
-    bg = Image.alpha_composite(bg, layer)
-
-    # inner diamond: colour bloom, then solid face
-    inner = diamond_mask(S, INNER_R, 20)
-    bloom_mask = inner.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))
-    layer = gradient.copy()
-    layer.putalpha(bloom_mask)
-    bg = Image.alpha_composite(bg, layer)
-
-    core = vertical_gradient(
-        (S, S),
-        [(0.0, CYAN), (0.42, IRIS), (0.75, VIOLET), (1.0, PINK)],
-    ).convert("RGBA")
-    core.putalpha(inner)
-    bg = Image.alpha_composite(bg, core)
-
-    # bevel: light on the top-left edges, shade on the bottom-right
-    hi = Image.composite(
-        diamond_stroke(S, INNER_R - 6, 20, blur=9),
-        Image.new("L", (S, S), 0),
-        half_mask(S, upper_left=True),
+    # one clear glass panel: no stacked copies, so it stays legible at 48 px
+    shadow = Image.new("RGBA", (CARD_W + 80, CARD_H + 80), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        [40, 60, CARD_W + 40, CARD_H + 60], radius=CARD_R + 10, fill=(0, 0, 0, 130)
     )
-    layer = Image.new("RGBA", (S, S), (255, 255, 255, 0))
-    layer.putalpha(hi.point(lambda v: int(v * 0.55)))
-    bg = Image.alpha_composite(bg, layer)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(80))
+    bg.alpha_composite(shadow, (CX - CARD_W // 2 - 40, CY - CARD_H // 2 - 40))
 
-    lo = Image.composite(
-        diamond_stroke(S, INNER_R - 6, 22, blur=11),
-        Image.new("L", (S, S), 0),
-        half_mask(S, upper_left=False),
-    )
-    layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    layer.putalpha(lo.point(lambda v: int(v * 0.30)))
-    bg = Image.alpha_composite(bg, layer)
+    panel = vivid(CARD_W).resize(card, Image.LANCZOS).convert("RGBA")
+    panel.putalpha(mask)
+    bg.alpha_composite(panel, (CX - CARD_W // 2, CY - CARD_H // 2))
+
+    # glass sheen across the top half
+    ys = Image.new("L", card, 0)
+    spx = ys.load()
+    for y in range(card[1]):
+        v = max(0, int(116 * (1 - y / (card[1] * 0.58))))
+        for x in range(card[0]):
+            spx[x, y] = v
+    sheen = Image.new("RGBA", card, (255, 255, 255, 0))
+    sheen.putalpha(Image.composite(ys, Image.new("L", card, 0), mask))
+    bg.alpha_composite(sheen, (CX - CARD_W // 2, CY - CARD_H // 2))
+
+    # a soft inner rim, brightest along the top
+    edge = card_border(card, CARD_R, 170, 7)
+    bg.alpha_composite(edge, (CX - CARD_W // 2, CY - CARD_H // 2))
+
+    # three page dots, the one visual tie to the swipeable deck
+    dots = Image.new("RGBA", card, (0, 0, 0, 0))
+    dd = ImageDraw.Draw(dots)
+    cy = CARD_H - 130
+    for i, alpha in enumerate((235, 150, 85)):
+        cx = CARD_W // 2 + (i - 1) * 86
+        r = 24
+        dd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255, alpha))
+    bg.alpha_composite(dots, (CX - CARD_W // 2, CY - CARD_H // 2))
 
     return bg
 

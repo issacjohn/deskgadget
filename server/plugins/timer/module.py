@@ -85,12 +85,6 @@ class Module(BaseModule):
                         {"id": "reset", "icon": "prev", "label": "Reset"},
                     ],
                 },
-                {
-                    "type": "kv",
-                    "items": [
-                        {"label": "Total", "value": _fmt(total)},
-                        {"label": "State", "value": "Running" if self.running else "Stopped"},
-                    ],
-                },
+
             ]
         }

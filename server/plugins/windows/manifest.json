@@ -11,7 +11,7 @@
     "limit": {
       "type": "number",
       "label": "Windows shown",
-      "default": 8
+      "default": 20
     }
   }
 }

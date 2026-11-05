@@ -46,14 +46,20 @@ class Module(BaseModule):
                 ]
             }
 
-        blocks: list[dict] = [
-            {
-                "type": "gauges",
-                "items": [
-                    {"label": d["mount"], "value": round(d["percent"]), "suffix": "%"}
-                    for d in self.drives[:4]
-                ],
-            },
+        # Rings read well for a handful of volumes; past that the bars are
+        # clearer, so skip the ring row instead of shrinking it to specks.
+        blocks: list[dict] = []
+        if len(self.drives) <= 4:
+            blocks.append(
+                {
+                    "type": "gauges",
+                    "items": [
+                        {"label": d["mount"], "value": round(d["percent"]), "suffix": "%"}
+                        for d in self.drives
+                    ],
+                }
+            )
+        blocks.append(
             {
                 "type": "meters",
                 "items": [
@@ -63,10 +69,10 @@ class Module(BaseModule):
                         "left": f"{d['free']} GB free",
                         "right": f"{d['total']} GB",
                     }
-                    for d in self.drives[:4]
+                    for d in self.drives
                 ],
-            },
-        ]
+            }
+        )
         total_free = round(sum(d["free"] for d in self.drives), 1)
         total_size = round(sum(d["total"] for d in self.drives), 1)
         blocks.append(
