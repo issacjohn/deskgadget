@@ -502,7 +502,11 @@ async def api_catalog():
         log.info("module catalogue unreachable; showing local modules only")
 
     items = [
-        {**entry, "installed": mid in installed}
+        {
+            **entry,
+            "installed": mid in installed,
+            "removable": mid not in {"system", "media"},
+        }
         for mid, entry in sorted(
             entries.items(),
             key=lambda kv: (kv[0] not in installed, str(kv[1].get("name", kv[0])).lower()),

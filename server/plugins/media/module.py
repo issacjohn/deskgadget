@@ -11,6 +11,7 @@ import asyncio
 import ctypes
 import logging
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from core import paths, smtc
@@ -47,6 +48,10 @@ class Module(BaseModule):
         self.outputs: list[dict] = []
         self._mic_tick = 0
         self.now: dict | None = None
+        # SMTC lives on its own thread: a wedged WinRT call must never block
+        # the Core Audio worker (that froze volume completely)
+        self._now_running = False
+        self._now_lock = threading.Lock()
 
     # -- plumbing ----------------------------------------------------------
     def _endpoint(self):
@@ -98,16 +103,16 @@ class Module(BaseModule):
         elif action in ("toggle_endpoint", "mic_toggle"):
             self._toggle_endpoint(str(payload.get("id", "")))
         elif action == "play_pause":
-            if not smtc.command("play_pause"):
-                _key(VK_MEDIA_PLAY_PAUSE)
+            self._media_command("play_pause", VK_MEDIA_PLAY_PAUSE)
         elif action == "next":
-            if not smtc.command("next"):
-                _key(VK_MEDIA_NEXT)
+            self._media_command("next", VK_MEDIA_NEXT)
         elif action == "prev":
-            if not smtc.command("prev"):
-                _key(VK_MEDIA_PREV)
+            self._media_command("prev", VK_MEDIA_PREV)
         elif action == "seek":
-            smtc.seek(float(payload.get("value", 0)))
+            seconds = float(payload.get("value", 0))
+            threading.Thread(
+                target=smtc.seek, args=(seconds,), name="smtc-seek", daemon=True
+            ).start()
 
     def _endpoint_for(self, device_id: str):
         """Both capture and render endpoints are activated the same way."""
@@ -188,6 +193,9 @@ class Module(BaseModule):
         except Exception:
             self.backend = "media-keys"
 
+        # non-blocking: SMTC runs on its own thread
+        self._refresh_now()
+
         # devices change rarely; rescan every ~15s
         self._mic_tick += 1
         if self._mic_tick == 1 or self._mic_tick % 5 == 0:
@@ -202,12 +210,42 @@ class Module(BaseModule):
         ep = self._endpoint()
         self.volume = float(ep.GetMasterVolumeLevelScalar())
         self.muted = bool(ep.GetMute())
-        # the media session changes on its own; read it here so it rides the
-        # same worker thread as Core Audio
-        try:
-            self.now = smtc.snapshot(paths.data_dir() / "artwork")
-        except Exception:
-            self.now = None
+
+    def _refresh_now(self) -> None:
+        """Poll SMTC on a throwaway thread; never block the audio worker."""
+        with self._now_lock:
+            if self._now_running:
+                return
+            self._now_running = True
+
+        def work() -> None:
+            value = None
+            try:
+                value = smtc.snapshot(paths.data_dir() / "artwork")
+            except Exception:
+                value = None
+            finally:
+                with self._now_lock:
+                    self.now = value
+                    self._now_running = False
+
+        threading.Thread(target=work, name="smtc-poll", daemon=True).start()
+
+    def _media_command(self, name: str, vk: int) -> None:
+        """Use the session API, but still work if WinRT wedges."""
+        done = threading.Event()
+
+        def work() -> None:
+            try:
+                smtc.command(name)
+            except Exception:
+                pass
+            finally:
+                done.set()
+
+        threading.Thread(target=work, name=f"smtc-{name}", daemon=True).start()
+        if not done.wait(1.2):
+            _key(vk)
 
     def page(self) -> dict:
         pct = round(self.volume * 100)
