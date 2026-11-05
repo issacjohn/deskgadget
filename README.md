@@ -22,7 +22,6 @@ Windows server · Android client · plugins anyone can write
 
 ![DESKGadget on a desk](docs/screenshots/desk.jpg)
 
-[▶ Watch the 24-second demo](docs/deskgadget-reel.mp4)
 
 | Home — every module at a glance | Media — now playing, volume, mics |
 |---|---|
