@@ -119,7 +119,7 @@ def main() -> None:
 
     print("  shortcuts created")
     print("  starting DeskGadget...")
-    subprocess.Popen([str(exe)], cwd=str(target))
+    subprocess.Popen([str(exe)], cwd=str(Path.home()))
     print()
 
 

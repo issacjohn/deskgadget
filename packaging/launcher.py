@@ -64,6 +64,13 @@ def seed_assets() -> None:
 def main() -> None:
     seed_assets()
 
+    # Never run from the install directory: children (adb, browsers) inherit the
+    # cwd and keep a handle on the folder, which blocks case-only renames.
+    try:
+        os.chdir(Path.home())
+    except OSError:
+        pass
+
     if not getattr(sys, "frozen", False):
         # dev mode: keep everything in the repo
         os.environ.pop("DESKGADGET_DATA", None)
