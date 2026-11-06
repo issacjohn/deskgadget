@@ -18,9 +18,13 @@ Windows server · Android client · plugins anyone can write
 
 ---
 
+
+
+
+
 ## Watch the reel
 
-[![Watch the DeskGadget reel](docs/screenshots/demo-poster.jpg)](https://github.com/issacjohn/deskgadget/blob/main/docs/deskgadget-reel.mp4)
+[![Watch the DeskGadget reel]([https://github.com/issacjohn/deskgadget/blob/main/docs/deskgadget-reel.mp4](https://github.com/user-attachments/assets/40533278-06c6-4c4a-8e19-92f7b8e892d6))
 
 105 seconds: six modules, the dashboard, and the story behind the deck.
 
