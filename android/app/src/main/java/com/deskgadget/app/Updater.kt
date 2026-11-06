@@ -83,8 +83,16 @@ object Updater {
     }
 
     private fun cleanNotes(body: String): String = body.lines()
-        .map { it.trim().removePrefix("- ").removePrefix("* ") }
-        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .map {
+            it.trim()
+                .removePrefix("- ")
+                .removePrefix("* ")
+                .removePrefix("> ")
+                .replace("**", "")
+                .replace("__", "")
+                .replace("`", "")
+        }
+        .filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("![") }
         .joinToString("\n")
         .take(1400)
 
