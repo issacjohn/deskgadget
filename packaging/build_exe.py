@@ -27,7 +27,9 @@ def run(args: list[str]) -> None:
     subprocess.run(args, cwd=str(ROOT), check=True)
 
 
-def pyinstaller(name: str, entry: str, work: str, extra: list[str]) -> None:
+def pyinstaller(
+    name: str, entry: str, work: str, extra: list[str], *, console: bool = True
+) -> None:
     run(
         [
             sys.executable,
@@ -36,7 +38,7 @@ def pyinstaller(name: str, entry: str, work: str, extra: list[str]) -> None:
             "--noconfirm",
             "--clean",
             "--onefile",
-            "--console",
+            "--console" if console else "--windowed",
             "--name",
             name,
             "--icon",
@@ -82,6 +84,10 @@ def main() -> None:
             shutil.copy2(src, stage / name)
 
     datas = [f"{stage}{';'}server"]
+    for asset in ("icon.ico", "icon.png"):
+        src = ROOT / "branding" / asset
+        if src.exists():
+            datas.append(f"{src}{';'}branding")
     if adb_src.exists():
         datas.append(f"{adb_src}{';'}adb")
     if tools_src.exists():
@@ -119,6 +125,24 @@ def main() -> None:
         "winrt.windows.storage.streams",
         "--hidden-import",
         "winrt.windows.foundation",
+        # the dashboard window (pywebview + WebView2 via pythonnet)
+        "--collect-all",
+        "webview",
+        "--collect-all",
+        "pythonnet",
+        "--hidden-import",
+        "clr",
+        "--hidden-import",
+        "clr_loader",
+        "--hidden-import",
+        "webview.platforms.edgechromium",
+        "--hidden-import",
+        "webview.platforms.winforms",
+        # the notification-area icon
+        "--collect-all",
+        "pystray",
+        "--hidden-import",
+        "PIL.Image",
         "--exclude-module",
         "tkinter",
         "--exclude-module",
@@ -128,7 +152,13 @@ def main() -> None:
     ]
 
     print("\n=== building portable app ===")
-    pyinstaller("DeskGadget", str(ROOT / "packaging" / "launcher.py"), "app", extra)
+    pyinstaller(
+        "DeskGadget",
+        str(ROOT / "packaging" / "launcher.py"),
+        "app",
+        extra,
+        console=False,
+    )
 
     print("\n=== packaging payload ===")
     BUILD.mkdir(parents=True, exist_ok=True)
