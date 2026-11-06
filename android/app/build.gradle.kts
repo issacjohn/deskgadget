@@ -20,6 +20,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Side-loaded builds: sign with the same key as the debug APK so
+            // existing installs can update instead of being reinstalled.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
