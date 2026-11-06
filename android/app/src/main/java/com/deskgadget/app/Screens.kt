@@ -1,5 +1,8 @@
 package com.deskgadget.app
 
+import android.os.Handler
+import android.os.Looper
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
@@ -59,6 +62,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -90,6 +94,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -451,13 +456,30 @@ fun DeckScreen(
     var update by remember { mutableStateOf<AppUpdate?>(null) }
     var upToDate by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
+    var downloading by remember { mutableStateOf(false) }
+    var progress by remember { mutableIntStateOf(0) }
+    var updateFile by remember { mutableStateOf<File?>(null) }
+    var needPermission by remember { mutableStateOf(false) }
+    var downloadFailed by remember { mutableStateOf(false) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    fun resetDownload() {
+        downloading = false
+        progress = 0
+        updateFile = null
+        needPermission = false
+        downloadFailed = false
+    }
 
     // once every three days, quietly look for a newer release
     LaunchedEffect(Unit) {
         if (Updater.shouldAutoCheck(context)) {
             Updater.markChecked(context)
             val found = withContext(Dispatchers.IO) { Updater.check(context) }
-            if (found != null) update = found
+            if (found != null) {
+                resetDownload()
+                update = found
+            }
         }
     }
 
@@ -468,6 +490,7 @@ fun DeckScreen(
                 val found = withContext(Dispatchers.IO) { Updater.check(context) }
                 checking = false
                 if (found != null) {
+                    resetDownload()
                     update = found
                 } else {
                     upToDate = true
@@ -633,14 +656,48 @@ fun DeckScreen(
         update?.let { found ->
             UpdateDialog(
                 update = found,
+                downloading = downloading,
+                progress = progress,
+                readyToInstall = updateFile != null,
+                needsPermission = needPermission,
+                downloadFailed = downloadFailed,
                 onDownload = {
-                    Updater.markChecked(context)
-                    Updater.open(context, found.apkUrl ?: found.pageUrl)
-                    update = null
+                    if (!downloading) {
+                        if (found.apkUrl == null) {
+                            Updater.open(context, found.pageUrl)
+                            update = null
+                        } else {
+                            downloading = true
+                            progress = 0
+                            downloadFailed = false
+                            needPermission = false
+                            scope.launch {
+                                val file = withContext(Dispatchers.IO) {
+                                    Updater.download(context, found) { p ->
+                                        mainHandler.post { progress = p }
+                                    }
+                                }
+                                downloading = false
+                                if (file != null) {
+                                    updateFile = file
+                                    needPermission = !Updater.install(context, file)
+                                } else {
+                                    downloadFailed = true
+                                }
+                            }
+                        }
+                    }
                 },
+                onInstall = {
+                    updateFile?.let { file ->
+                        needPermission = !Updater.install(context, file)
+                    }
+                },
+                onSettings = { Updater.openInstallSettings(context) },
                 onLater = {
                     Updater.markChecked(context)
                     update = null
+                    resetDownload()
                 },
             )
         }
@@ -656,7 +713,18 @@ fun DeckScreen(
 }
 
 @Composable
-private fun UpdateDialog(update: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
+private fun UpdateDialog(
+    update: AppUpdate,
+    downloading: Boolean,
+    progress: Int,
+    readyToInstall: Boolean,
+    needsPermission: Boolean,
+    downloadFailed: Boolean,
+    onDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onSettings: () -> Unit,
+    onLater: () -> Unit,
+) {
     Dialog(onDismissRequest = onLater) {
         Column(
             Modifier
@@ -681,6 +749,7 @@ private fun UpdateDialog(update: AppUpdate, onDownload: () -> Unit, onLater: () 
             )
             Spacer(Modifier.height(3.dp))
             Text("A newer build is ready on GitHub.", color = Faint, fontSize = 11.5.sp)
+
             if (update.notes.isNotBlank()) {
                 Spacer(Modifier.height(13.dp))
                 Text(
@@ -689,10 +758,67 @@ private fun UpdateDialog(update: AppUpdate, onDownload: () -> Unit, onLater: () 
                     fontSize = 12.sp,
                     lineHeight = 17.sp,
                     modifier = Modifier
-                        .heightIn(max = 156.dp)
+                        .heightIn(max = 142.dp)
                         .verticalScroll(rememberScrollState()),
                 )
             }
+
+            if (downloading) {
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Downloading",
+                        color = Muted,
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("$progress%", color = Ink, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0x22FFFFFF)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth((progress.coerceIn(0, 100) / 100f))
+                            .fillMaxHeight()
+                            .background(Color(0xFF7CE7FF)),
+                    )
+                }
+            }
+
+            if (needsPermission) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Allow installs from DeskGadget, then tap Install again.",
+                    color = Color(0xFFFFC96B),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Open settings",
+                    color = Color(0xFF7CE7FF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable(onClick = onSettings),
+                )
+            }
+
+            if (downloadFailed) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Download failed. Check the connection and try again.",
+                    color = Color(0xFFFF8CA8),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
@@ -711,13 +837,17 @@ private fun UpdateDialog(update: AppUpdate, onDownload: () -> Unit, onLater: () 
                         .weight(1f)
                         .height(40.dp)
                         .clip(RoundedCornerShape(11.dp))
-                        .background(Color(0xFF7CE7FF))
-                        .clickable(onClick = onDownload),
+                        .background(if (downloading) Color(0x337CE7FF) else Color(0xFF7CE7FF))
+                        .then(if (downloading) Modifier else Modifier.clickable(onClick = if (readyToInstall) onInstall else onDownload)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        if (update.apkUrl != null) "Download" else "Open release",
-                        color = Color(0xFF06121A),
+                        when {
+                            downloading -> "Downloading…"
+                            readyToInstall -> "Install"
+                            else -> "Download"
+                        },
+                        color = if (downloading) Color(0xFF06121A).copy(alpha = 0.65f) else Color(0xFF06121A),
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
                     )

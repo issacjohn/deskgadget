@@ -3,7 +3,11 @@ package com.deskgadget.app
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.FileProvider
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -94,6 +98,99 @@ object Updater {
             if (x != y) return x > y
         }
         return false
+    }
+
+    /** Downloads the release APK into the app's own folder. Blocking; use Dispatchers.IO. */
+    fun download(context: Context, update: AppUpdate, onProgress: (Int) -> Unit): File? {
+        val url = update.apkUrl ?: return null
+        val dir = File(context.getExternalFilesDir("updates"), "").apply { mkdirs() }
+        dir.listFiles()?.forEach { if (it.name.endsWith(".apk") || it.name.endsWith(".part")) it.delete() }
+        val target = File(dir, "DeskGadget-${update.version}.apk")
+        val part = File(dir, "DeskGadget-${update.version}.part")
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = true
+                connectTimeout = 20000
+                readTimeout = 30000
+                setRequestProperty("User-Agent", "DeskGadget")
+                setRequestProperty("Accept", "application/octet-stream")
+            }
+            if (conn.responseCode !in 200..299) return null
+            val total = conn.contentLengthLong
+            conn.inputStream.use { input ->
+                part.outputStream().use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var read: Int
+                    var done = 0L
+                    while (input.read(buffer).also { read = it } > 0) {
+                        out.write(buffer, 0, read)
+                        done += read
+                        if (total > 0) {
+                            onProgress(((done * 100) / total).toInt().coerceIn(0, 100))
+                        }
+                    }
+                }
+            }
+            if (target.exists()) target.delete()
+            if (!part.renameTo(target)) {
+                part.copyTo(target, overwrite = true)
+                part.delete()
+            }
+            onProgress(100)
+            target
+        } catch (_: Exception) {
+            part.delete()
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    fun canInstall(context: Context): Boolean = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    } catch (_: Exception) {
+        false
+    }
+
+    fun openInstallSettings(context: Context) {
+        try {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Hands the APK to the system installer. Returns false when the user still
+     * has to allow installs from DeskGadget, in which case the settings page is
+     * opened and the caller can offer "Install" again.
+     */
+    fun install(context: Context, file: File): Boolean {
+        if (!canInstall(context)) {
+            openInstallSettings(context)
+            return false
+        }
+        return try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            )
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun open(context: Context, url: String) {
