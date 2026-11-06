@@ -555,7 +555,7 @@ $('#devices').addEventListener('click', async e=>{
     }
     return;
   }
-  const themeBtn = e.target.closest('[data-theme]');
+  const themeBtn = e.target.closest('.tbtn[data-theme]');
   if(themeBtn){
     const devEl = themeBtn.closest('.device');
     const idx = [...document.querySelectorAll('.device')].indexOf(devEl);
@@ -741,7 +741,14 @@ $('#rescan').onclick = async ()=>{ await api('/api/modules/reload', {}); toast('
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function refresh(){
-  if(editing) return;
+  // While a settings field is focused a re-render would steal the caret.
+  // Retry instead of dropping the update, so a toggle clicked right after
+  // typing still paints.
+  if(editing){
+    clearTimeout(window._refresh_t);
+    window._refresh_t = setTimeout(refresh, 160);
+    return;
+  }
   state = await api('/api/state');
   render();
 }
