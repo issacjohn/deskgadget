@@ -18,6 +18,14 @@ Windows server · Android client · plugins anyone can write
 
 ---
 
+## Watch the reel
+
+[![Watch the DeskGadget reel](docs/screenshots/demo-poster.jpg)](https://github.com/issacjohn/deskgadget/blob/main/docs/deskgadget-reel.mp4)
+
+105 seconds: six modules, the dashboard, and the story behind the deck.
+
+---
+
 ## Screenshots
 
 ![DeskGadget on a desk](docs/screenshots/desk.jpg)
@@ -198,6 +206,14 @@ python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 - Phone camera and microphone bridge (needs a virtual-device driver on Windows)
 - Home Assistant, GitHub notifications, Steam deals
 - Per-module page layouts on the phone
+
+## Support
+
+DeskGadget is free and open source. If it earned a place on your desk:
+
+**[Buy me a coffee](https://buymeacoffee.com/issac_john)**
+
+---
 
 ## License
 

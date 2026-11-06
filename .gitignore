@@ -47,4 +47,5 @@ artwork/
 
 # demo videos stay local
 docs/*.mp4
+!docs/deskgadget-reel.mp4
 
