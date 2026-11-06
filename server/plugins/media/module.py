@@ -45,6 +45,7 @@ class Module(BaseModule):
         self.device_name = "Default output"
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="audio")
         self._ep = None
+        self._ep_id = None
         self.mics: list[dict] = []
         self.outputs: list[dict] = []
         self._mic_tick = 0
@@ -57,8 +58,7 @@ class Module(BaseModule):
 
     # -- plumbing ----------------------------------------------------------
     def _endpoint(self):
-        if self._ep is not None:
-            return self._ep
+        """Always follow the current default output; devices change often."""
         import comtypes
 
         try:
@@ -67,8 +67,44 @@ class Module(BaseModule):
             pass
         from pycaw.pycaw import AudioUtilities
 
-        self._ep = AudioUtilities.GetSpeakers().EndpointVolume
+        try:
+            device = AudioUtilities.GetSpeakers()
+            device_id = getattr(device, "id", None)
+            if self._ep is None or device_id != self._ep_id:
+                self._ep = device.EndpointVolume
+                self._ep_id = device_id
+        except Exception:
+            if self._ep is None:
+                raise
         return self._ep
+
+    def _render_volumes(self) -> list:
+        """Every active playback endpoint, so mute silences whatever is routed."""
+        from comtypes import CLSCTX_ALL
+
+        from pycaw.api.endpointvolume import IAudioEndpointVolume
+        from pycaw.constants import DEVICE_STATE, EDataFlow
+        from pycaw.pycaw import AudioUtilities
+
+        out = []
+        try:
+            enumerator = AudioUtilities.GetDeviceEnumerator()
+            collection = enumerator.EnumAudioEndpoints(
+                EDataFlow.eRender.value, DEVICE_STATE.ACTIVE.value
+            )
+            for i in range(collection.GetCount()):
+                try:
+                    iface = collection.Item(i)
+                    out.append(
+                        iface.Activate(
+                            IAudioEndpointVolume._iid_, CLSCTX_ALL, None
+                        ).QueryInterface(IAudioEndpointVolume)
+                    )
+                except Exception:
+                    continue
+        except Exception:
+            log.debug("could not enumerate render endpoints", exc_info=True)
+        return out
 
     def _set(self, level: float) -> None:
         """Set the master volume. Runs on the COM worker thread via _call."""
@@ -121,9 +157,15 @@ class Module(BaseModule):
             ).start()
 
     def _toggle_mute(self) -> None:
-        ep = self._endpoint()
-        muted = not bool(ep.GetMute())
-        ep.SetMute(1 if muted else 0, None)
+        endpoints = self._render_volumes()
+        if not endpoints:
+            endpoints = [self._endpoint()]
+        muted = not all(bool(ep.GetMute()) for ep in endpoints)
+        for ep in endpoints:
+            try:
+                ep.SetMute(1 if muted else 0, None)
+            except Exception:
+                log.debug("mute failed for one endpoint", exc_info=True)
         self.muted = muted
 
     def _endpoint_for(self, device_id: str):
