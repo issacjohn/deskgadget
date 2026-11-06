@@ -22,20 +22,14 @@ Windows server · Android client · plugins anyone can write
 
 
 
-## Watch
+## Watch The story behind the deck.
 
-
-
-<details>
-<summary><b>▶ Watch the 105-second reel</b></summary>
 
 https://github.com/user-attachments/assets/92a8c61b-5b16-4d60-b0ac-5233fafa8866
 
-</details>
 
 
 
-105 seconds: six modules, the dashboard, and the story behind the deck.
 
 ---
 
