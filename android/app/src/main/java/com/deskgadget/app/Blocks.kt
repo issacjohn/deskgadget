@@ -765,8 +765,10 @@ private fun ControlsCard(block: JSONObject, accent: Color, onPress: (String) -> 
 private fun iconFor(name: String): ImageVector = when (name) {
     "prev" -> Icons.Rounded.SkipPrevious
     "next" -> Icons.Rounded.SkipNext
+    "play" -> Icons.Rounded.PlayArrow
     "play_pause" -> Icons.Rounded.PlayArrow
     "pause" -> Icons.Rounded.Pause
+    "mic" -> Icons.Rounded.Mic
     "volume_up" -> Icons.Rounded.VolumeUp
     "volume_down" -> Icons.Rounded.VolumeDown
     "mute" -> Icons.Rounded.VolumeOff
