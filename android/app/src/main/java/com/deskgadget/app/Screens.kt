@@ -952,37 +952,66 @@ private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
 
-        // Work the grid out from the space actually available: every module
-        // gets a tile, and the tiles share the height instead of scrolling.
+        // Work the grid out from the space actually available. Tiles keep a
+        // sane height instead of stretching: with one or two modules the grid
+        // would otherwise become two full-height slabs.
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val count = pages.size.coerceAtLeast(1)
-            val columns = ((maxWidth / 122.dp).toFloat() + 0.5f).toInt()
-                .coerceIn(2, 6)
-                .coerceAtMost(count)
+            // Up to four modules sit in one calm row. From five upwards the
+            // grid uses two rows, which keeps the tiles from becoming slabs.
+            val columns = if (count <= 4) {
+                count
+            } else {
+                ((count + 1) / 2).coerceIn(3, 6)
+            }
             val rows = ((count + columns - 1) / columns).coerceAtLeast(1)
             val gap = if (rows > 2) 7.dp else 9.dp
             val compact = rows > 2
 
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+            val naturalRowHeight = (maxHeight - gap * (rows - 1)) / rows
+            val rowHeight = minOf(
+                naturalRowHeight,
+                when {
+                    rows > 1 -> 260.dp
+                    count == 1 -> 220.dp
+                    else -> 200.dp
+                },
+            )
+            val rawTileWidth = (maxWidth - gap * (columns - 1)) / columns
+            val tileWidth = when (count) {
+                1 -> minOf(rawTileWidth, 520.dp)
+                2 -> minOf(rawTileWidth, 380.dp)
+                3 -> minOf(rawTileWidth, 340.dp)
+                else -> rawTileWidth
+            }
+
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
                 repeat(rows) { row ->
+                    val start = row * columns
+                    val end = minOf(count, start + columns)
+                    if (row > 0) Spacer(Modifier.height(gap))
                     Row(
-                        Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        Modifier.fillMaxWidth().height(rowHeight),
+                        horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        repeat(columns) { column ->
-                            val index = row * columns + column
-                            if (index < count) {
-                                ModuleTile(
-                                    page = pages[index],
-                                    compact = compact,
-                                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                                    onClick = { onOpen(index) },
-                                )
-                            } else {
-                                Spacer(Modifier.weight(1f))
-                            }
+                        for (index in start until end) {
+                            ModuleTile(
+                                page = pages[index],
+                                compact = compact,
+                                modifier = Modifier.width(tileWidth).fillMaxHeight(),
+                                onClick = { onOpen(index) },
+                            )
                         }
                     }
+                }
+                if (count <= 2) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Add more modules in the dashboard on your PC.",
+                        color = Faint,
+                        fontSize = 11.sp,
+                    )
                 }
             }
         }
