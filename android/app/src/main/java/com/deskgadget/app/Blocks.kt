@@ -993,13 +993,23 @@ private fun NewsBlock(
                 if (pageCount > 1) {
                     Spacer(Modifier.width(10.dp))
                     PagerArrow("‹", enabled = page > 0, accent = accent) { page-- }
-                    Text(
-                        "${page + 1}/$pageCount",
-                        color = Muted,
-                        fontSize = 9.5.sp,
-                        letterSpacing = 0.6.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp),
-                    )
+                    Box(
+                        Modifier
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(accent.copy(alpha = 0.16f))
+                            .border(1.dp, accent.copy(alpha = 0.38f), RoundedCornerShape(50))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "${page + 1} / $pageCount",
+                            color = accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp,
+                        )
+                    }
                     PagerArrow("›", enabled = page < pageCount - 1, accent = accent) { page++ }
                 }
             }
@@ -1046,27 +1056,33 @@ private fun PagerArrow(label: String, enabled: Boolean, accent: Color, onClick: 
     val flash = rememberTapFlash(pressed)
     Box(
         Modifier
-            .size(34.dp)
+            .size(48.dp)
             .then(if (enabled) Modifier.pressable(interaction, onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .size(26.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(
                     when {
-                        flash -> accent.copy(alpha = 0.35f)
-                        enabled -> Color(0x18FFFFFF)
-                        else -> Color(0x08FFFFFF)
+                        flash -> accent.copy(alpha = 0.45f)
+                        enabled -> accent.copy(alpha = 0.18f)
+                        else -> Color(0x0AFFFFFF)
                     }
+                )
+                .border(
+                    1.dp,
+                    if (enabled) accent.copy(alpha = 0.45f) else Color(0x0FFFFFFF),
+                    CircleShape,
                 ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 label,
-                color = if (enabled) Ink else Faint.copy(alpha = 0.5f),
-                fontSize = 14.sp,
+                color = if (enabled) accent else Faint.copy(alpha = 0.45f),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }

@@ -80,10 +80,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -178,6 +180,8 @@ fun ConnectScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth > maxHeight
+        val compact = maxHeight < 400.dp
+        CompositionLocalProvider(LocalCompactLayout provides compact) {
         if (wide) {
             Row(
                 Modifier
@@ -188,14 +192,12 @@ fun ConnectScreen(
             ) {
                 Column(Modifier.weight(1f).padding(end = 36.dp)) {
                     BrandBlock()
-                    Spacer(Modifier.height(26.dp))
-                    TipText()
+                    Spacer(Modifier.height(16.dp))
+                    QuickSetupCard()
                 }
                 Box(Modifier.weight(1.15f).fillMaxHeight()) {
                     Column(
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
+                        Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
                     ) {
                         ConnectCard(
@@ -208,7 +210,6 @@ fun ConnectScreen(
                             onPort = { port = it },
                             onConnect = onConnect,
                         )
-                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
@@ -234,9 +235,10 @@ fun ConnectScreen(
                     onConnect = onConnect,
                 )
                 Spacer(Modifier.height(22.dp))
-                TipText()
+                QuickSetupCard()
                 Spacer(Modifier.height(28.dp))
             }
+        }
         }
     }
 }
@@ -254,25 +256,15 @@ private fun BrandBlock() {
     Text("Your PC, one swipe away.", color = Muted, fontSize = 14.sp)
 }
 
-@Composable
-private fun TipText() {
-    Text(
-        "Tip: USB debugging on? The Windows app forwards the port, so 127.0.0.1 works. "
-            + "No debugging? USB tethering is enough - no adb, no developer options.",
-        color = Faint,
-        fontSize = 11.5.sp,
-        lineHeight = 17.sp,
-    )
-}
-
 /** Where a brand-new user gets the PC half of DeskGadget. */
 private const val SERVER_URL = "https://github.com/issacjohn/deskgadget/releases/latest"
 private const val SERVER_LABEL = "github.com/issacjohn/deskgadget/releases"
 
 @Composable
-private fun ServerHelpCard() {
+private fun QuickSetupCard() {
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
+    var noBrowser by remember { mutableStateOf(false) }
 
     LaunchedEffect(copied) {
         if (copied) {
@@ -281,94 +273,122 @@ private fun ServerHelpCard() {
         }
     }
 
+    fun copyLink() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("DeskGadget server", SERVER_URL))
+        copied = true
+    }
+
+    fun openRelease() {
+        val opened = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SERVER_URL)))
+        }.isSuccess
+        if (!opened) {
+            // a stripped-down deck phone may have no browser: leave the link
+            // on the clipboard so it can be opened on the PC
+            noBrowser = true
+            copyLink()
+        }
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(Color(0x1A7CE7FF))
-            .border(1.dp, Color(0x337CE7FF), RoundedCornerShape(16.dp))
-            .padding(14.dp)
+            .border(1.dp, Color(0x337CE7FF), RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Text(
-            "Need the Windows server?",
+            "Quick setup",
             color = Ink,
-            fontSize = 14.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        Spacer(Modifier.height(8.dp))
+
+        SetupStep(1, "Install the Windows app on your PC.")
         Spacer(Modifier.height(5.dp))
-        Text(
-            "DeskGadget runs on your PC. Install it there, open it, then come back - "
-                + "this screen finds it automatically.",
-            color = Muted,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Already installed? Make sure it is running and both devices are on the same Wi-Fi.",
-            color = Faint,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
-        )
-        Spacer(Modifier.height(12.dp))
+        SetupStep(2, "Download it below, then launch it on the PC.")
+        Spacer(Modifier.height(5.dp))
+        SetupStep(3, "Open this app - it connects automatically.")
+        Spacer(Modifier.height(10.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(13.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))))
-                    .clickable {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SERVER_URL)))
-                        }
-                    },
+                    .clickable(role = Role.Button) { openRelease() },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     "Download for Windows",
                     color = Color(0xFF06121A),
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
-                    .clickable {
-                        val clipboard =
-                            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        clipboard?.setPrimaryClip(
-                            ClipData.newPlainText("DeskGadget server", SERVER_URL)
-                        )
-                        copied = true
-                    }
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(13.dp))
+                    .clickable(role = Role.Button) { copyLink() }
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     if (copied) "Copied" else "Copy link",
                     color = Ink.copy(alpha = 0.85f),
-                    fontSize = 12.sp,
+                    fontSize = 11.5.sp,
                 )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             SERVER_LABEL,
-            color = Faint,
-            fontSize = 10.5.sp,
-            modifier = Modifier.clickable {
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SERVER_URL)))
-                }
-            },
+            color = Color(0xFF7CE7FF),
+            fontSize = 11.sp,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier.clickable { openRelease() },
         )
+
+        Spacer(Modifier.height(7.dp))
+        if (noBrowser) {
+            Text(
+                "Link copied - open it on your PC.",
+                color = Color(0xFFFFC48A),
+                fontSize = 10.sp,
+            )
+        } else {
+            Text(
+                "Wi-Fi  ·  ADB (USB or wireless)  ·  USB tethering",
+                color = Faint,
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetupStep(number: Int, text: String) {
+    Row {
+        Box(
+            Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(Color(0x267CE7FF)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$number", color = Color(0xFF7CE7FF), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.width(9.dp))
+        Text(text, color = Muted, fontSize = 11.sp, lineHeight = 15.sp)
     }
 }
 
@@ -383,172 +403,227 @@ private fun ConnectCard(
     onPort: (String) -> Unit,
     onConnect: (String, Int) -> Unit,
 ) {
+    val compact = LocalCompactLayout.current
+    var manual by remember { mutableStateOf(false) }
+    val showForm = found.isEmpty() || manual
+    val err = state.error
+
     GlassPanel(Modifier.fillMaxWidth()) {
         Text("CONNECT", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
         Text(
             "Pick your PC on the network",
             color = Ink,
-            fontSize = 20.sp,
+            fontSize = if (compact) 18.sp else 20.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Start the DeskGadget server on Windows. Same Wi-Fi finds it automatically. "
-                + "For a cable, turn on USB tethering - no USB debugging needed - and the PC "
-                + "appears here over USB too.",
-            color = Muted,
-            fontSize = 12.5.sp,
-            lineHeight = 18.sp,
-        )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(4.dp))
 
-        if (found.isNotEmpty()) {
+        if (!showForm) {
+            Text(
+                err ?: "Tap your PC to connect.",
+                color = if (err != null) Color(0xFFFF8CA8) else Muted,
+                fontSize = if (compact) 11.5.sp else 12.5.sp,
+                lineHeight = if (compact) 15.sp else 18.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
+
             found.forEach { server ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x14FFFFFF))
-                        .clickable {
-                            onHost(server.host)
-                            onPort(server.port.toString())
-                            onConnect(server.host, server.port)
-                        }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                ServerRow(server) {
+                    onHost(server.host)
+                    onPort(server.port.toString())
+                    onConnect(server.host, server.port)
+                }
+                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
+            }
+
+            Text(
+                "Enter address manually",
+                color = Color(0xFF7CE7FF),
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clickable(role = Role.Button) { manual = true }
+                    .padding(vertical = 5.dp),
+            )
+        } else {
+            if (found.isEmpty()) {
+                Text(
+                    "Same Wi-Fi finds it automatically. On a cable, use USB tethering or ADB - "
+                        + "the PC appears here too.",
+                    color = Muted,
+                    fontSize = if (compact) 11.5.sp else 12.5.sp,
+                    lineHeight = if (compact) 15.sp else 18.sp,
+                )
+                Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier
-                            .size(9.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF5BE49B))
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(server.name, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("${server.host}:${server.port}", color = Faint, fontSize = 11.sp)
-                    }
-                    Text(
-                        if (server.wired) "USB" else "WI-FI",
-                        color = if (server.wired) Color(0xFF7CFFB2) else Faint,
-                        fontSize = 9.sp,
-                        letterSpacing = 1.sp,
+                            .background(
+                                when {
+                                    err != null -> Color(0xFFFF8CA8)
+                                    scanning -> Color(0xFF7CE7FF)
+                                    else -> Color(0xFF5E6879)
+                                }
+                            )
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text("Connect", color = Color(0xFF7CE7FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when {
+                            err != null -> err
+                            scanning -> "Looking for DeskGadget on your network…"
+                            else -> "No server found — is the Windows app running?"
+                        },
+                        color = if (err != null) Color(0xFFFF8CA8) else Faint,
+                        fontSize = 11.5.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+            } else {
+                Text(
+                    "Enter the address printed on the PC dashboard.",
+                    color = Muted,
+                    fontSize = if (compact) 11.5.sp else 12.5.sp,
+                )
+                Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
             }
-            Spacer(Modifier.height(4.dp))
-        } else {
+
+            Text("PC ADDRESS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(if (compact) 5.dp else 8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (scanning) Color(0xFF7CE7FF) else Color(0xFF5E6879))
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    if (scanning) "Looking for DeskGadget on your network…"
-                    else "No server found yet — install the Windows app below, or enter its address.",
-                    color = Faint,
-                    fontSize = 12.sp,
-                )
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x33000000))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = if (compact) 10.dp else 13.dp)
+                ) {
+                    BasicTextField(
+                        value = host,
+                        onValueChange = onHost,
+                        singleLine = true,
+                        textStyle = TextStyle(color = Ink, fontSize = 15.sp),
+                        cursorBrush = SolidColor(Color(0xFF7CE7FF)),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        decorationBox = { inner ->
+                            if (host.isEmpty()) {
+                                Text("192.168.0.10", color = Faint, fontSize = 15.sp)
+                            }
+                            inner()
+                        },
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .width(78.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x33000000))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = if (compact) 10.dp else 13.dp)
+                ) {
+                    BasicTextField(
+                        value = port,
+                        onValueChange = { onPort(it.filter(Char::isDigit).take(5)) },
+                        singleLine = true,
+                        textStyle = TextStyle(color = Ink, fontSize = 15.sp),
+                        cursorBrush = SolidColor(Color(0xFF7CE7FF)),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
             }
-            Spacer(Modifier.height(12.dp))
-        }
 
-        if (!scanning && found.isEmpty()) {
-            ServerHelpCard()
-            Spacer(Modifier.height(14.dp))
-        }
-
-        Text("PC ADDRESS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
             Box(
                 Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0x33000000))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 14.dp, vertical = 13.dp)
-            ) {
-                BasicTextField(
-                    value = host,
-                    onValueChange = onHost,
-                    singleLine = true,
-                    textStyle = TextStyle(color = Ink, fontSize = 15.sp),
-                    cursorBrush = SolidColor(Color(0xFF7CE7FF)),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    decorationBox = { inner ->
-                        if (host.isEmpty()) {
-                            Text("192.168.0.10", color = Faint, fontSize = 15.sp)
-                        }
-                        inner()
+                    .fillMaxWidth()
+                    .height(if (compact) 48.dp else 52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))))
+                    .clickable(enabled = state.status != ConnStatus.CONNECTING) {
+                        onConnect(host, port.toIntOrNull() ?: 8787)
                     },
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .width(78.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0x33000000))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 12.dp, vertical = 13.dp)
+                contentAlignment = Alignment.Center,
             ) {
-                BasicTextField(
-                    value = port,
-                    onValueChange = { onPort(it.filter(Char::isDigit).take(5)) },
-                    singleLine = true,
-                    textStyle = TextStyle(color = Ink, fontSize = 15.sp),
-                    cursorBrush = SolidColor(Color(0xFF7CE7FF)),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                Text(
+                    if (state.status == ConnStatus.CONNECTING) "Connecting…" else "Connect",
+                    color = Color(0xFF06121A),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            if (found.isEmpty()) {
+                Spacer(Modifier.height(if (compact) 7.dp else 10.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(if (compact) 40.dp else 44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .clickable(role = Role.Button) { onConnect("127.0.0.1", 8787) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Use USB (127.0.0.1)", color = Ink.copy(alpha = 0.8f), fontSize = 12.5.sp)
+                }
+            } else {
+                Text(
+                    "Back to discovered PCs",
+                    color = Color(0xFF7CE7FF),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .clickable(role = Role.Button) { manual = false }
+                        .padding(vertical = 5.dp),
                 )
             }
         }
+    }
+}
 
-        Spacer(Modifier.height(14.dp))
+@Composable
+private fun ServerRow(server: ServerChoice, onPick: () -> Unit) {
+    val compact = LocalCompactLayout.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0x14FFFFFF))
+            .clickable(role = Role.Button, onClick = onPick)
+            .padding(horizontal = 12.dp, vertical = if (compact) 9.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(
             Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))))
-                .clickable(enabled = state.status != ConnStatus.CONNECTING) {
-                    onConnect(host, port.toIntOrNull() ?: 8787)
-                },
-            contentAlignment = Alignment.Center,
-        ) {
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF5BE49B))
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
             Text(
-                if (state.status == ConnStatus.CONNECTING) "Connecting…" else "Connect",
-                color = Color(0xFF06121A),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
+                server.name,
+                color = Ink,
+                fontSize = if (compact) 13.5.sp else 14.sp,
+                fontWeight = FontWeight.Medium,
             )
+            Text("${server.host}:${server.port}", color = Faint, fontSize = if (compact) 10.sp else 11.sp)
         }
-
-        Spacer(Modifier.height(10.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
-                .clickable { onConnect("127.0.0.1", 8787) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("Use USB (127.0.0.1)", color = Ink.copy(alpha = 0.8f), fontSize = 12.5.sp)
-        }
-
-        val err = state.error
-        if (err != null) {
-            Spacer(Modifier.height(12.dp))
-            Text(err, color = Color(0xFFFF8CA8), fontSize = 12.sp, lineHeight = 17.sp)
-        }
+        Text(
+            if (server.wired) "USB" else "WI-FI",
+            color = if (server.wired) Color(0xFF7CFFB2) else Faint,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text("Connect", color = Color(0xFF7CE7FF), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -668,7 +743,13 @@ fun DeckScreen(
                         }
                     }
                     Text(clock, color = Muted, fontSize = 10.sp, letterSpacing = 0.8.sp)
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(4.dp))
+                    HeaderIconChip(
+                        Icons.Rounded.PowerSettingsNew,
+                        Color(0xFFFFA3B8),
+                        "Disconnect",
+                        onDisconnect,
+                    )
                     HeaderChip("\u2665", onClick = { supportOpen = true })
                 }
             } else {
@@ -681,7 +762,13 @@ fun DeckScreen(
                         ConnectionStatus(state)
                         Spacer(Modifier.weight(1f))
                         Text(clock, color = Muted, fontSize = 10.sp, letterSpacing = 0.8.sp)
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(4.dp))
+                        HeaderIconChip(
+                            Icons.Rounded.PowerSettingsNew,
+                            Color(0xFFFFA3B8),
+                            "Disconnect",
+                            onDisconnect,
+                        )
                         HeaderChip("\u2665", onClick = { supportOpen = true })
                     }
                     Spacer(Modifier.height(3.dp))
@@ -1444,6 +1531,39 @@ private fun HeaderChip(label: String, onClick: () -> Unit) {
             .padding(horizontal = 10.dp, vertical = 3.dp)
     ) {
         Text(label, color = Muted, fontSize = 9.5.sp)
+    }
+}
+
+/** A round header action that matches the heart chip, with a full touch target. */
+@Composable
+private fun HeaderIconChip(
+    icon: ImageVector,
+    tint: Color,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(Color(0x14FFFFFF))
+                .border(1.dp, Color(0x1FFFFFFF), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = description,
+                tint = tint,
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
 }
 
