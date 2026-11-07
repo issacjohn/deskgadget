@@ -746,6 +746,7 @@ fun DeckScreen(
     var toastVisible by remember { mutableStateOf(false) }
     var supportOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    var betaUpdates by remember { mutableStateOf(Updater.betaEnabled(context)) }
     var update by remember { mutableStateOf<AppUpdate?>(null) }
     var upToDate by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
@@ -941,7 +942,12 @@ fun DeckScreen(
         if (supportOpen) {
             SupportSheet(
                 version = Updater.currentVersion(context),
+                beta = betaUpdates,
                 checking = checking,
+                onBeta = { on ->
+                    betaUpdates = on
+                    Updater.setBetaEnabled(context, on)
+                },
                 onCoffee = {
                     supportOpen = false
                     onOpenUrl(COFFEE_URL)
@@ -1201,7 +1207,9 @@ private const val COFFEE_URL = "https://buymeacoffee.com/issac_john"
 @Composable
 private fun SupportSheet(
     version: String,
+    beta: Boolean,
     checking: Boolean,
+    onBeta: (Boolean) -> Unit,
     onCoffee: () -> Unit,
     onCheckUpdates: () -> Unit,
     onDisconnect: () -> Unit,
@@ -1263,6 +1271,31 @@ private fun SupportSheet(
                 Spacer(Modifier.weight(1f))
                 Text("v$version", color = Faint, fontSize = 9.5.sp)
             }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onBeta(!beta) }
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Beta builds", color = Ink.copy(alpha = 0.9f), fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (beta) "ON" else "OFF",
+                    color = if (beta) Color(0xFF7CE7FF) else Faint,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                )
+            }
+            Text(
+                "Pre-release updates, for testing new builds.",
+                color = Faint,
+                fontSize = 9.5.sp,
+                modifier = Modifier.padding(start = 10.dp, bottom = 3.dp),
+            )
 
             Row(
                 Modifier
