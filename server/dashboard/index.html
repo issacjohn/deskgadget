@@ -356,6 +356,18 @@
   </div>
 </div>
 
+<div class="modal" id="askModal">
+  <div class="sheet glass" style="max-width:380px;gap:12px">
+    <strong id="askTitle" style="font-size:14px"></strong>
+    <div id="askBody" class="hint" style="margin:0;line-height:1.55"></div>
+    <input id="askInput" type="text" hidden />
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">
+      <button class="ghost" id="askCancel">Cancel</button>
+      <button class="primary" id="askOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="glass"></div>
 
 <script>
@@ -574,10 +586,22 @@ $('#devices').addEventListener('click', async e=>{
     const id = [...document.querySelectorAll('.device')].indexOf(dev);
     const d = state.devices[id];
     if(e.target.classList.contains('rename')){
-      const name = prompt('Device name', d.name); if(name){ await api(`/api/devices/${d.id}/rename`, {name}); refresh(); }
+      const name = await ask({
+        title: 'Rename this phone',
+        body: 'The name appears on the phone and in this dashboard.',
+        input: true,
+        value: d.name,
+        ok: 'Rename'
+      });
+      if(name && name.trim()){ await api(`/api/devices/${d.id}/rename`, {name: name.trim()}); refresh(); }
     }
     if(e.target.classList.contains('remove')){
-      if(confirm(`Remove ${d.name}?`)){ await api(`/api/devices/${d.id}`, null, 'DELETE'); refresh(); }
+      if(await ask({
+        title: `Remove ${d.name}?`,
+        body: 'This forgets the phone here. It can be paired again later.',
+        ok: 'Remove',
+        danger: true
+      })){ await api(`/api/devices/${d.id}`, null, 'DELETE'); refresh(); }
     }
     return;
   }
@@ -612,8 +636,13 @@ $('#modules').addEventListener('click', async e=>{
   const mod = state.modules.find(m=>m.id===id);
 
   if(e.target.closest('[data-remove]')){
-    if(!confirm(`Remove ${mod.name}? It moves to plugins_removed and can be installed again from the catalogue.`)) return;
-    await api(`/api/modules/${id}/remove`);
+    if(!(await ask({
+      title: `Remove ${mod.name}?`,
+      body: 'It moves to plugins_removed and can be installed again from the catalogue.',
+      ok: 'Remove',
+      danger: true
+    }))) return;
+    await api(`/api/modules/${id}/remove`, null, 'POST');
     toast(mod.name + ' removed');
     refresh(); return;
   }
@@ -719,6 +748,42 @@ $('#applist').addEventListener('click', async e=>{
 });
 $('#mclose').onclick = ()=>$('#modal').classList.remove('show');
 $('#modal').onclick = e=>{ if(e.target.id==='modal') $('#modal').classList.remove('show'); };
+
+/* In-page confirm/prompt. WebView2 can suppress native confirm()/prompt(),
+   which made the module bin button look dead. This always works. */
+let askResolve = null;
+function ask(opts = {}) {
+  return new Promise(resolve => {
+    askResolve = resolve;
+    $('#askTitle').textContent = opts.title || 'Are you sure?';
+    const body = $('#askBody');
+    body.textContent = opts.body || '';
+    body.style.display = opts.body ? '' : 'none';
+    const input = $('#askInput');
+    input.hidden = !opts.input;
+    input.value = opts.value || '';
+    const ok = $('#askOk');
+    ok.textContent = opts.ok || 'OK';
+    ok.style.background = opts.danger ? 'linear-gradient(135deg,#FF8CA8,#FF5A82)' : '';
+    ok.style.color = opts.danger ? '#1A0A10' : '';
+    $('#askModal').classList.add('show');
+    setTimeout(() => (opts.input ? input : ok).focus(), 60);
+  });
+}
+function closeAsk(value) {
+  $('#askModal').classList.remove('show');
+  const resolve = askResolve;
+  askResolve = null;
+  if (resolve) resolve(value);
+}
+$('#askOk').onclick = () => closeAsk($('#askInput').hidden ? true : $('#askInput').value);
+$('#askCancel').onclick = () => closeAsk(null);
+$('#askModal').onclick = e => { if (e.target.id === 'askModal') closeAsk(null); };
+document.addEventListener('keydown', e => {
+  if (!$('#askModal').classList.contains('show')) return;
+  if (e.key === 'Enter') { e.preventDefault(); $('#askOk').click(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeAsk(null); }
+});
 
 /* upload / rescan */
 const drop = $('#drop'), file = $('#file');
