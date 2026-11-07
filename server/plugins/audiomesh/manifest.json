@@ -1,9 +1,9 @@
 {
   "id": "audiomesh",
   "name": "AudioMesh",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Isaac",
-  "description": "See and control AudioMesh routing on this PC.",
+  "description": "Routing, sync, delays, mute and volume for AudioMesh.",
   "accent": "#4C8DFF",
   "interval": 2.0,
   "default_enabled": true,

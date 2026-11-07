@@ -28,7 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Straighten
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
@@ -478,7 +482,7 @@ private fun KvCard(block: JSONObject, modifier: Modifier) {
 
 /* ----------------------------- hours ----------------------------- */
 
-/** A horizontal strip of upcoming hours — reads at a glance in landscape. */
+/** A horizontal strip of upcoming hours â€” reads at a glance in landscape. */
 @Composable
 private fun HoursCard(block: JSONObject, accent: Color, modifier: Modifier) {
     val items = block.arr("items")
@@ -777,6 +781,11 @@ private fun iconFor(name: String): ImageVector = when (name) {
     "power" -> Icons.Rounded.PowerSettingsNew
     "desktop" -> Icons.Rounded.DesktopWindows
     "grid" -> Icons.Rounded.GridView
+    "sync" -> Icons.Rounded.Sync
+    "graphic_eq" -> Icons.Rounded.GraphicEq
+    "music_note" -> Icons.Rounded.MusicNote
+    "straighten" -> Icons.Rounded.Straighten
+    "refresh" -> Icons.Rounded.Refresh
     "camera" -> Icons.Rounded.PhotoCamera
     else -> Icons.Rounded.Circle
 }
@@ -992,7 +1001,7 @@ private fun NewsBlock(
                 )
                 if (pageCount > 1) {
                     Spacer(Modifier.width(10.dp))
-                    PagerArrow("‹", enabled = page > 0, accent = accent) { page-- }
+                    PagerArrow("â€¹", enabled = page > 0, accent = accent) { page-- }
                     Box(
                         Modifier
                             .padding(horizontal = 4.dp)
@@ -1010,7 +1019,7 @@ private fun NewsBlock(
                             letterSpacing = 0.5.sp,
                         )
                     }
-                    PagerArrow("›", enabled = page < pageCount - 1, accent = accent) { page++ }
+                    PagerArrow("â€º", enabled = page < pageCount - 1, accent = accent) { page++ }
                 }
             }
         }
@@ -1369,7 +1378,7 @@ private fun TextInputCard(
                 decorationBox = { inner ->
                     if (text.isEmpty()) {
                         Text(
-                            block.str("placeholder").ifBlank { "Type here…" },
+                            block.str("placeholder").ifBlank { "Type hereâ€¦" },
                             color = Faint,
                             fontSize = 14.sp,
                         )
@@ -1843,3 +1852,4 @@ private fun Modifier.clickableWith(
     interaction: MutableInteractionSource,
     onClick: () -> Unit,
 ): Modifier = this.pressable(interaction, onClick)
+

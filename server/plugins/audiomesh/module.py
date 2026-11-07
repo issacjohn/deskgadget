@@ -1,4 +1,4 @@
-﻿"""AudioMesh module for DeskGadget / DeskGadget.
+"""AudioMesh module for DeskGadget / DeskGadget.
 
 Phase 1 (this file) works without touching AudioMesh:
 
@@ -75,7 +75,7 @@ def _display_name(name: str, limit: int = 30) -> str:
     cut = trimmed.rfind(" ")
     if cut >= limit // 2:
         trimmed = trimmed[:cut]
-    return trimmed.rstrip() + "…"
+    return trimmed.rstrip() + "..."
 
 
 def _classify(name: str, enumerator: str = "") -> str:
@@ -182,10 +182,10 @@ class Module(BaseModule):
         self._meta[endpoint_id] = (name, enumerator)
         return name, enumerator
 
-    def _api(self, method: str, path: str, payload: dict | None = None) -> Any:
+    def _request(self, port: int, method: str, path: str, payload: dict | None = None) -> Any:
         import requests
 
-        url = f"http://127.0.0.1:{self.port}{path}"
+        url = f"http://127.0.0.1:{port}{path}"
         headers = {"X-AudioMesh-Token": self.token} if self.token else {}
         if method == "GET":
             response = requests.get(url, headers=headers, timeout=0.8)
@@ -193,6 +193,9 @@ class Module(BaseModule):
             response = requests.post(url, json=payload or {}, headers=headers, timeout=1.2)
         response.raise_for_status()
         return response.json()
+
+    def _api(self, method: str, path: str, payload: dict | None = None) -> Any:
+        return self._request(self.port, method, path, payload)
 
     async def _command(self, payload: dict) -> bool:
         try:
@@ -202,6 +205,17 @@ class Module(BaseModule):
         except Exception:
             self.api_ok = False
             return False
+
+    async def _set_all_muted(self, muted: bool) -> int:
+        changed = 0
+        for endpoint in list(self.endpoints):
+            if not endpoint.get("enabled"):
+                continue
+            if await self._command(
+                {"action": "set_mute", "id": endpoint.get("id"), "value": muted}
+            ):
+                changed += 1
+        return changed
 
     # -- lifecycle ---------------------------------------------------------
     async def update(self) -> None:
@@ -216,7 +230,20 @@ class Module(BaseModule):
         try:
             state = await asyncio.to_thread(self._api, "GET", "/api/state")
         except Exception:
+            # The app walks forward if its port is taken, and a restart can leave
+            # control.json one number ahead. Probe the small window once.
             state = None
+            for candidate in (DEFAULT_PORT, DEFAULT_PORT + 1, DEFAULT_PORT + 2):
+                if candidate == self.port:
+                    continue
+                try:
+                    state = await asyncio.to_thread(
+                        self._request, candidate, "GET", "/api/state"
+                    )
+                    self._file_port = candidate
+                    break
+                except Exception:
+                    continue
 
         self.api_ok = isinstance(state, dict)
         if self.api_ok:
@@ -230,7 +257,9 @@ class Module(BaseModule):
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            self._file_port = int(data.get("port") or data.get("Port") or 0)
+            port = int(data.get("port") or data.get("Port") or 0)
+            if not self._file_port:
+                self._file_port = port
             self._file_token = str(data.get("token") or data.get("Token") or "")
         except (OSError, ValueError, TypeError):
             log.debug("could not read %s", path, exc_info=True)
@@ -301,6 +330,8 @@ class Module(BaseModule):
         if action == "refresh":
             await self.update()
             self.push()
+            if not self.api_ok:
+                await self.hub.notify("Refreshed - control API not reachable")
             return
 
         if not self.api_ok:
@@ -324,6 +355,38 @@ class Module(BaseModule):
             await self._command({"action": "set_volume", "value": volume})
         elif action == "show":
             await self._command({"action": "show"})
+        elif action == "estimate":
+            if await self._command({"action": "estimate"}):
+                await self.hub.notify("Delays estimated - trim by ear with the test tone")
+        elif action == "toggle_device":
+            endpoint_id = str(payload.get("id") or "")
+            target = next(
+                (e for e in self.endpoints if str(e.get("id")) == endpoint_id), None
+            )
+            if target is not None:
+                want = not bool(target.get("enabled"))
+                ok = await self._command(
+                    {"action": "set_enabled", "id": endpoint_id, "value": want}
+                )
+                await asyncio.to_thread(self._refresh_now)
+                current = next(
+                    (e for e in self.endpoints if str(e.get("id")) == endpoint_id), None
+                )
+                actual = bool(current.get("enabled")) if current else False
+                if ok and actual == want:
+                    await self.hub.notify(
+                        f"{'Enabled' if want else 'Disabled'} {_display_name(str(target.get('name') or 'speaker'))}"
+                    )
+                elif ok:
+                    await self.hub.notify("That output is the capture source")
+                self.push()
+                return
+        elif action == "mute_all":
+            any_unmuted = any(e.get("enabled") and not e.get("muted") for e in self.endpoints)
+            changed = await self._set_all_muted(any_unmuted)
+            if self.api_ok and changed:
+                word = "Muted" if any_unmuted else "Unmuted"
+                await self.hub.notify(f"{word} {changed} speaker{'s' if changed != 1 else ''}")
 
         if self.api_ok:
             self._set_notice("")
@@ -370,18 +433,57 @@ class Module(BaseModule):
             self._set_notice("Could not launch AudioMesh")
 
     # -- page --------------------------------------------------------------
+    def _row(self, endpoint: dict) -> dict:
+        kind = str(endpoint.get("kind") or "Output")
+        name = _display_name(str(endpoint.get("name") or "Endpoint"), 24)
+        volume = endpoint.get("volume")
+
+        if not endpoint.get("enabled"):
+            sub = f"{kind} - off"
+            value = "off"
+        else:
+            buffer_ms = endpoint.get("bufferMs")
+            delay_ms = int(endpoint.get("delayMs") or 0)
+            if buffer_ms:
+                sub = f"{kind} - {buffer_ms} ms"
+            elif delay_ms:
+                sub = f"{kind} - {delay_ms} ms"
+            else:
+                sub = kind
+            value = "muted" if endpoint.get("muted") else f"{int(volume or 0)}%"
+
+        return {
+            "title": name,
+            "sub": sub,
+            "value": value,
+            "action": "toggle_device",
+            "id": endpoint.get("id"),
+        }
+
     def page(self) -> dict:
-        routed = (
-            f"{self.routed_count} of {self.total} speakers routed"
-            if self.total
-            else "No speakers configured"
-        )
+        enabled = [e for e in self.endpoints if e.get("enabled")]
+        volumes = [int(e.get("volume") or 0) for e in enabled]
+        average = round(sum(volumes) / len(volumes)) if volumes else 100
+        all_muted = bool(enabled) and all(e.get("muted") for e in enabled)
+
         if self.api_ok:
-            hero_value = "LIVE" if self.running else "READY"
+            if self.running and all_muted:
+                hero_value = "MUTED"
+            elif self.running:
+                hero_value = "LIVE"
+            else:
+                hero_value = "READY"
         elif self.running:
             hero_value = "RUNNING"
         else:
             hero_value = "OFFLINE"
+
+        routed_text = (
+            f"{self.routed_count} of {self.total} routed"
+            if self.total
+            else "No speakers configured"
+        )
+        hero_sub = routed_text + (f" | {average}%" if enabled else "")
 
         blocks: list[dict] = [
             {
@@ -389,97 +491,129 @@ class Module(BaseModule):
                 "label": "AUDIOMESH",
                 "value": hero_value,
                 "unit": "",
-                "sub": self.notice or routed,
-                "progress": (self.routed_count / self.total) if self.total else 0.0,
+                "sub": self.notice or hero_sub,
+                "progress": (average / 100.0) if enabled else ((self.routed_count / self.total) if self.total else 0.0),
                 "accent": "#4C8DFF",
+                "col": 0,
             }
         ]
 
-        # One control row, directly under the hero: in the compact landscape
-        # layout anything below ~360 dp is off-screen, so the buttons must come
-        # before the (long) speaker list.
-        if self.api_ok:
-            pills = [
-                {
-                    "id": "toggle",
-                    "icon": "pause" if self.running else "play_pause",
-                    "label": "Stop" if self.running else "Start",
-                },
-                {
-                    "id": "perfect_sync",
-                    "icon": "volume_up",
-                    "label": "Sync on" if self.perfect_sync else "Sync off",
-                },
-                {
-                    "id": "source",
-                    "icon": "next",
-                    "label": "Tone" if self.source != "TestTone" else "System",
-                },
-            ]
-        else:
-            pills = [
-                {
-                    "id": "launch",
-                    "icon": "play_pause",
-                    "label": "Open AudioMesh" if self.running else "Launch AudioMesh",
-                },
-            ]
-        blocks.append({"type": "controls", "style": "pill", "items": pills})
-
-        if self.endpoints:
-            rows = []
-            for endpoint in self.endpoints[:16]:
-                kind = str(endpoint.get("kind") or "Output")
-                buffer_ms = endpoint.get("bufferMs")
-                delay_ms = int(endpoint.get("delayMs") or 0)
-                if buffer_ms:
-                    sub = f"{kind} - {buffer_ms} ms buffer"
-                elif delay_ms:
-                    sub = f"{kind} - {delay_ms} ms delay"
-                else:
-                    sub = kind
-                volume = endpoint.get("volume")
-                value = "muted" if endpoint.get("muted") else f"{int(volume or 0)}%"
-                rows.append(
-                    {
-                        "title": _display_name(str(endpoint.get("name") or "Endpoint")),
-                        "sub": sub,
-                        "value": value,
-                    }
-                )
-            blocks.append({"type": "list", "title": "SPEAKERS", "items": rows})
-
-        if self.api_ok:
-            volumes = [int(e.get("volume") or 0) for e in self.endpoints if e.get("enabled")]
-            average = round(sum(volumes) / len(volumes)) if volumes else 100
+        if not self.api_ok:
             blocks.append(
                 {
-                    "type": "slider",
-                    "label": "ALL SPEAKERS",
-                    "value": average,
-                    "min": 0,
-                    "max": 100,
-                    "action": "set_volume",
+                    "type": "controls",
+                    "style": "pill",
+                    "col": 1,
+                    "items": [
+                        {
+                            "id": "launch",
+                            "icon": "desktop",
+                            "label": "Open" if self.running else "Launch",
+                        },
+                        {"id": "refresh", "icon": "refresh", "label": "Refresh"},
+                    ],
                 }
             )
+            if self.endpoints:
+                blocks.append(
+                    {
+                        "type": "list",
+                        "title": "SPEAKERS",
+                        "col": 2,
+                        "items": [self._row(e) for e in self.endpoints],
+                    }
+                )
+            return {"blocks": blocks}
 
+        # Volume lives with the hero so AUDIOMESH shows the level at a glance.
+        blocks.append(
+            {
+                "type": "slider",
+                "label": "ALL SPEAKERS",
+                "value": average,
+                "min": 0,
+                "max": 100,
+                "action": "set_volume",
+                "col": 0,
+            }
+        )
         blocks.append(
             {
                 "type": "kv",
+                "col": 0,
                 "items": [
                     {
-                        "label": "Source",
-                        "value": "Test tone" if self.source == "TestTone" else "System audio",
+                        "label": "SOURCE",
+                        "value": "Tone" if self.source == "TestTone" else "System",
                     },
-                    {"label": "Buffer", "value": self.latency_mode or "Balanced"},
-                    {"label": "Perfect", "value": "On" if self.perfect_sync else "Off"},
+                    {"label": "BUFFER", "value": self.latency_mode or "Balanced"},
                 ],
             }
         )
 
+        blocks.append(
+            {
+                "type": "controls",
+                "style": "pill",
+                "col": 1,
+                "items": [
+                    {
+                        "id": "toggle",
+                        "icon": "pause" if self.running else "play_pause",
+                        "label": "Stop" if self.running else "Start",
+                    },
+                    {
+                        "id": "perfect_sync",
+                        "icon": "sync",
+                        "label": "Sync on" if self.perfect_sync else "Sync off",
+                    },
+                    {
+                        "id": "source",
+                        "icon": "music_note",
+                        "label": "Tone" if self.source != "TestTone" else "System",
+                    },
+                ],
+            }
+        )
+
+        any_unmuted = any(e.get("muted") is False for e in enabled)
+        blocks.append(
+            {
+                "type": "controls",
+                "style": "pill",
+                "col": 2,
+                "items": [
+                    {"id": "estimate", "icon": "straighten", "label": "Estimate"},
+                    {
+                        "id": "mute_all",
+                        "icon": "mute" if any_unmuted else "volume_up",
+                        "label": "Mute all" if any_unmuted else "Unmute",
+                    },
+                ],
+            }
+        )
+
+        routed_rows = [self._row(e) for e in enabled]
+        available_rows = [self._row(e) for e in self.endpoints if not e.get("enabled")]
+
+        if routed_rows:
+            blocks.append(
+                {
+                    "type": "list",
+                    "title": "ROUTED",
+                    "col": 1,
+                    "items": routed_rows,
+                }
+            )
+        if available_rows:
+            blocks.append(
+                {
+                    "type": "list",
+                    "title": "AVAILABLE",
+                    "col": 2,
+                    "items": available_rows,
+                }
+            )
+
         return {"blocks": blocks}
-
-
-
-
 
