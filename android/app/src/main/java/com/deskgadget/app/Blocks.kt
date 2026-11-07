@@ -482,7 +482,7 @@ private fun KvCard(block: JSONObject, modifier: Modifier) {
 
 /* ----------------------------- hours ----------------------------- */
 
-/** A horizontal strip of upcoming hours â€” reads at a glance in landscape. */
+/** A horizontal strip of upcoming hours — reads at a glance in landscape. */
 @Composable
 private fun HoursCard(block: JSONObject, accent: Color, modifier: Modifier) {
     val items = block.arr("items")
@@ -1001,7 +1001,7 @@ private fun NewsBlock(
                 )
                 if (pageCount > 1) {
                     Spacer(Modifier.width(10.dp))
-                    PagerArrow("â€¹", enabled = page > 0, accent = accent) { page-- }
+                    PagerArrow("‹", enabled = page > 0, accent = accent) { page-- }
                     Box(
                         Modifier
                             .padding(horizontal = 4.dp)
@@ -1019,7 +1019,7 @@ private fun NewsBlock(
                             letterSpacing = 0.5.sp,
                         )
                     }
-                    PagerArrow("â€º", enabled = page < pageCount - 1, accent = accent) { page++ }
+                    PagerArrow("›", enabled = page < pageCount - 1, accent = accent) { page++ }
                 }
             }
         }
@@ -1378,7 +1378,7 @@ private fun TextInputCard(
                 decorationBox = { inner ->
                     if (text.isEmpty()) {
                         Text(
-                            block.str("placeholder").ifBlank { "Type hereâ€¦" },
+                            block.str("placeholder").ifBlank { "Type here…" },
                             color = Faint,
                             fontSize = 14.sp,
                         )
