@@ -72,6 +72,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -166,6 +167,22 @@ fun ConnectScreen(
         scanning = false
     }
 
+    var usbAttempt by remember { mutableIntStateOf(0) }
+    var usbHelp by remember { mutableStateOf(false) }
+    val latestStatus = rememberUpdatedState(state.status)
+
+    fun connectUsb() {
+        usbAttempt += 1
+        onConnect("127.0.0.1", 8787)
+    }
+
+    // 127.0.0.1 only answers when ADB forwarding or USB tethering is live.
+    LaunchedEffect(usbAttempt) {
+        if (usbAttempt == 0) return@LaunchedEffect
+        delay(6000)
+        if (latestStatus.value != ConnStatus.CONNECTED) usbHelp = true
+    }
+
     // nothing saved and exactly one PC answered: connect without a tap
     LaunchedEffect(found, host, state.status) {
         val noSaved = prefs.saved(false) == null && prefs.saved(true) == null
@@ -209,6 +226,7 @@ fun ConnectScreen(
                             onHost = { host = it },
                             onPort = { port = it },
                             onConnect = onConnect,
+                            onConnectUsb = { connectUsb() },
                         )
                     }
                 }
@@ -233,12 +251,83 @@ fun ConnectScreen(
                     onHost = { host = it },
                     onPort = { port = it },
                     onConnect = onConnect,
+                    onConnectUsb = { connectUsb() },
                 )
                 Spacer(Modifier.height(22.dp))
                 QuickSetupCard()
                 Spacer(Modifier.height(28.dp))
             }
         }
+        }
+    }
+
+    if (usbHelp) {
+        UsbHelpDialog(
+            onClose = { usbHelp = false },
+            onRetry = {
+                usbHelp = false
+                connectUsb()
+            },
+        )
+    }
+}
+
+@Composable
+private fun UsbHelpDialog(onClose: () -> Unit, onRetry: () -> Unit) {
+    Dialog(onDismissRequest = onClose) {
+        Column(
+            Modifier
+                .width(360.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xF20A0F16))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Text(
+                "USB cable not ready",
+                color = Ink,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Turn on USB tethering on this phone: Settings > Connections > "
+                    + "Mobile hotspot & tethering > USB tethering.\n\n"
+                    + "Or enable USB debugging (ADB) so the Windows app can forward the port.",
+                color = Muted,
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp,
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .clickable(role = Role.Button, onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Close", color = Ink.copy(alpha = 0.82f), fontSize = 13.sp)
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))))
+                        .clickable(role = Role.Button, onClick = onRetry),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "Try again",
+                        color = Color(0xFF06121A),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
@@ -402,6 +491,7 @@ private fun ConnectCard(
     onHost: (String) -> Unit,
     onPort: (String) -> Unit,
     onConnect: (String, Int) -> Unit,
+    onConnectUsb: () -> Unit,
 ) {
     val compact = LocalCompactLayout.current
     var manual by remember { mutableStateOf(false) }
@@ -439,14 +529,25 @@ private fun ConnectCard(
                 Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
             }
 
-            Text(
-                "Enter address manually",
-                color = Color(0xFF7CE7FF),
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clickable(role = Role.Button) { manual = true }
-                    .padding(vertical = 5.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Connect via USB",
+                    color = Color(0xFF7CE7FF),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clickable(role = Role.Button, onClick = onConnectUsb)
+                        .padding(vertical = 5.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "Enter address manually",
+                    color = Color(0xFF7CE7FF),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clickable(role = Role.Button) { manual = true }
+                        .padding(vertical = 5.dp),
+                )
+            }
         } else {
             if (found.isEmpty()) {
                 Text(
@@ -568,10 +669,10 @@ private fun ConnectCard(
                         .height(if (compact) 40.dp else 44.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
-                        .clickable(role = Role.Button) { onConnect("127.0.0.1", 8787) },
+                        .clickable(role = Role.Button, onClick = onConnectUsb),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Use USB (127.0.0.1)", color = Ink.copy(alpha = 0.8f), fontSize = 12.5.sp)
+                    Text("Connect via USB (127.0.0.1)", color = Ink.copy(alpha = 0.8f), fontSize = 12.5.sp)
                 }
             } else {
                 Text(
