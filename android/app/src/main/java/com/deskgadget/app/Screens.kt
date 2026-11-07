@@ -1,5 +1,10 @@
 package com.deskgadget.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 
@@ -260,6 +265,113 @@ private fun TipText() {
     )
 }
 
+/** Where a brand-new user gets the PC half of DeskGadget. */
+private const val SERVER_URL = "https://github.com/issacjohn/deskgadget/releases/latest"
+private const val SERVER_LABEL = "github.com/issacjohn/deskgadget/releases"
+
+@Composable
+private fun ServerHelpCard() {
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x1A7CE7FF))
+            .border(1.dp, Color(0x337CE7FF), RoundedCornerShape(16.dp))
+            .padding(14.dp)
+    ) {
+        Text(
+            "Need the Windows server?",
+            color = Ink,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "DeskGadget runs on your PC. Install it there, open it, then come back - "
+                + "this screen finds it automatically.",
+            color = Muted,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Already installed? Make sure it is running and both devices are on the same Wi-Fi.",
+            color = Faint,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+        )
+        Spacer(Modifier.height(12.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))))
+                    .clickable {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SERVER_URL)))
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Download for Windows",
+                    color = Color(0xFF06121A),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                    .clickable {
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        clipboard?.setPrimaryClip(
+                            ClipData.newPlainText("DeskGadget server", SERVER_URL)
+                        )
+                        copied = true
+                    }
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (copied) "Copied" else "Copy link",
+                    color = Ink.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            SERVER_LABEL,
+            color = Faint,
+            fontSize = 10.5.sp,
+            modifier = Modifier.clickable {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SERVER_URL)))
+                }
+            },
+        )
+    }
+}
+
 @Composable
 private fun ConnectCard(
     state: DeckState,
@@ -340,12 +452,17 @@ private fun ConnectCard(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     if (scanning) "Looking for DeskGadget on your network…"
-                    else "No server found automatically — enter the address below.",
+                    else "No server found yet — install the Windows app below, or enter its address.",
                     color = Faint,
                     fontSize = 12.sp,
                 )
             }
             Spacer(Modifier.height(12.dp))
+        }
+
+        if (!scanning && found.isEmpty()) {
+            ServerHelpCard()
+            Spacer(Modifier.height(14.dp))
         }
 
         Text("PC ADDRESS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
