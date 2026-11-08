@@ -113,7 +113,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -1940,14 +1939,6 @@ private fun CameraCard(
     }
     val resolutionLabels = remember { listOf("1080p", "720p", "480p") }
     var resolutionIndex by remember { mutableIntStateOf(1) }
-
-    // A camera should not be interrupted by the screen timing out: keep the
-    // display on while this module is live, and let it sleep again afterwards.
-    val rootView = LocalView.current
-    DisposableEffect(granted) {
-        rootView.keepScreenOn = granted
-        onDispose { rootView.keepScreenOn = false }
-    }
 
     val stream = remember(endpoint) { CameraStream(endpoint) }
     val analyzer = remember { Executors.newSingleThreadExecutor() }

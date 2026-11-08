@@ -198,7 +198,22 @@ def main() -> None:
         return
 
     with zipfile.ZipFile(payload) as zf:
-        zf.extractall(target)
+        # the filter DLLs are often loaded by a running app; never let a locked
+        # file abort the upgrade
+        for item in zf.infolist():
+            if item.filename.lower().startswith("unitycapture/"):
+                continue
+            zf.extract(item, target)
+        for item in zf.infolist():
+            if not item.filename.lower().startswith("unitycapture/"):
+                continue
+            dst = target / item.filename
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with zf.open(item) as src, open(dst, "wb") as out:
+                    shutil.copyfileobj(src, out)
+            except OSError:
+                print(f"  kept the installed {Path(item.filename).name} (in use)")
 
     for name, stash in keep.items():
         dst = target / name

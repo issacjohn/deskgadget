@@ -250,8 +250,14 @@ def ensure() -> tuple[bool, str]:
             if not src.exists():
                 continue
             dst = target / name
-            if not dst.exists() or dst.stat().st_size != src.stat().st_size:
+            if dst.exists() and dst.stat().st_size == src.stat().st_size:
+                continue  # already installed; it may be loaded by an app
+            try:
                 shutil.copy2(src, dst)
+            except OSError:
+                # in use by a running capture app; the copy on disk is fine
+                if not dst.exists():
+                    raise
     except OSError as exc:
         return False, f"Could not copy the camera driver: {exc}"
 
