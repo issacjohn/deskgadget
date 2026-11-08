@@ -210,7 +210,8 @@ python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 
 ## Roadmap
 
-- Phone camera and microphone bridge (needs a virtual-device driver on Windows)
+- Phone camera as a Windows webcam — beta, needs one permission prompt to
+  register the bundled virtual camera
 - Home Assistant, GitHub notifications, Steam deals
 - Per-module page layouts on the phone
 
