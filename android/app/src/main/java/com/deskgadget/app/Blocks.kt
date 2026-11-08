@@ -89,6 +89,7 @@ import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoCamera
@@ -1988,6 +1989,20 @@ private fun CameraCard(
         granted = allowed
         denied = !allowed
     }
+    var micGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var audioOn by rememberSaveable { mutableStateOf(true) }
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { allowed ->
+        micGranted = allowed
+        if (allowed) audioOn = true
+    }
+    val mic = remember(endpoint) { MicStream(endpoint) }
 
     var lens by rememberSaveable { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     var live by remember { mutableStateOf(false) }
@@ -2037,6 +2052,17 @@ private fun CameraCard(
     LaunchedEffect(live) {
         while (live) {
             if (!stream.isOpen()) stream.start()
+            delay(1500)
+        }
+    }
+
+    // Audio rides along with the camera: same start, same stop.
+    LaunchedEffect(live, audioOn, micGranted) {
+        if (live && audioOn && micGranted) mic.start() else mic.stop()
+    }
+    LaunchedEffect(live, audioOn, micGranted) {
+        while (live && audioOn && micGranted) {
+            mic.ensure()
             delay(1500)
         }
     }
@@ -2110,6 +2136,7 @@ private fun CameraCard(
             runCatching { provider?.unbindAll() }
             analyzer.shutdown()
             stream.close()
+            mic.stop()
         }
     }
 
@@ -2224,6 +2251,7 @@ private fun CameraCard(
                                 error ?: when {
                                     needsSettings -> "Permission denied — open Settings"
                                     !granted -> "Allow the camera to see a preview"
+                                    live && audioOn && micGranted -> "Your PC is receiving this view and sound"
                                     live -> "Your PC is receiving this view"
                                     else -> "Preview only - nothing leaves this phone"
                                 },
@@ -2299,6 +2327,17 @@ private fun CameraCard(
                                 if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
                                     torch = !torch
                                     runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            MicButton(
+                                on = audioOn && micGranted,
+                                enabled = granted,
+                            ) {
+                                if (!micGranted) {
+                                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                } else {
+                                    audioOn = !audioOn
                                 }
                             }
                         }
@@ -2600,6 +2639,35 @@ private fun TorchButton(on: Boolean, enabled: Boolean, onClick: () -> Unit) {
             tint = when {
                 !enabled -> Faint.copy(alpha = 0.4f)
                 on -> Color(0xFFFFC96B)
+                else -> Ink.copy(alpha = 0.8f)
+            },
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun MicButton(on: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(shape)
+            .background(if (on) Color(0x335BE49B) else Color(0x14FFFFFF))
+            .border(1.dp, if (on) Color(0x665BE49B) else Color(0x1FFFFFFF), shape)
+            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
+            .semantics {
+                contentDescription = "Microphone"
+                if (on) stateDescription = "Sending audio to the PC"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (on) Icons.Rounded.Mic else Icons.Rounded.MicOff,
+            contentDescription = null,
+            tint = when {
+                !enabled -> Faint.copy(alpha = 0.4f)
+                on -> Color(0xFF5BE49B)
                 else -> Ink.copy(alpha = 0.8f)
             },
             modifier = Modifier.size(20.dp),

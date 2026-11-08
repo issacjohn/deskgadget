@@ -138,6 +138,11 @@
   .updatebar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
   .updatebar .hint{margin:0}
   .updbeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
+  .audselect{background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.14);color:var(--ink);
+    border-radius:10px;padding:6px 8px;font-size:12px;max-width:230px;outline:none}
+  .audmeter{width:64px;height:6px;border-radius:99px;background:rgba(var(--tint),.09);
+    overflow:hidden;display:inline-block}
+  .audmeter>i{display:block;height:100%;width:0;background:#5BE49B;transition:width .12s linear}
   .updbar{height:8px;border-radius:99px;background:rgba(var(--tint),.09);overflow:hidden}
   .updbar>i{display:block;height:100%;width:0;border-radius:99px;
     background:linear-gradient(90deg,#7CE7FF,#B69CFF);transition:width .25s ease}
@@ -312,6 +317,18 @@
     <div class="spacer"></div>
     <button class="ghost" id="updcheck">Check for updates</button>
     <label class="updbeta"><input type="checkbox" id="updbeta" /> Beta builds</label>
+  </div>
+
+  <div class="updatebar glass" id="audiobar">
+    <span class="hint" style="margin:0;letter-spacing:1.4px;font-size:10px">PHONE MIC</span>
+    <span class="audmeter"><i id="audbar"></i></span>
+    <span class="hint" id="audstat" style="margin:0">idle</span>
+    <div class="spacer"></div>
+    <select id="auddevice" class="audselect"></select>
+    <input id="audvol" type="range" min="0" max="100" value="90" style="width:110px" />
+    <button class="ghost" id="audmute">Mute</button>
+    <label class="updbeta"><input type="checkbox" id="audgate" checked /> Noise gate</label>
+    <label class="updbeta"><input type="checkbox" id="audenabled" checked /> On</label>
   </div>
 
   <div class="grid" style="margin-top:16px">
@@ -1162,6 +1179,62 @@ $upd('updgo').onclick = async ()=>{
   startDownload();
 };
 checkUpdates(false);
+
+/* ---- phone microphone ------------------------------------------------- */
+let audMuted = false;
+
+function audEl(id){ return document.getElementById(id); }
+
+function renderAudio(r){
+  audMuted = !!r.muted;
+  const stat = audEl('audstat');
+  stat.textContent = r.live ? (r.playing ? 'live' : 'buffering') : (r.error ? 'error' : 'idle');
+  stat.style.color = r.live ? '#5BE49B' : (r.error ? '#FF8CA8' : '');
+  audEl('audbar').style.width = Math.round(Math.min(1, r.level || 0) * 100) + '%';
+  audEl('audbar').style.background = audMuted ? '#FF8CA8' : '#5BE49B';
+  audEl('audmute').textContent = audMuted ? 'Unmute' : 'Mute';
+  audEl('audenabled').checked = !!r.enabled;
+  audEl('audgate').checked = !!r.gate;
+
+  const vol = audEl('audvol');
+  if(document.activeElement !== vol) vol.value = Math.round((r.volume || 0) * 100);
+
+  const sel = audEl('auddevice');
+  const names = (r.devices || []).map(d => d.name);
+  const wanted = r.device || '';
+  const signature = names.join('|') + '#' + wanted;
+  if(sel.dataset.sig !== signature){
+    sel.dataset.sig = signature;
+    sel.innerHTML = '<option value="">System default</option>' + names
+      .map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n.replace(/</g, '&lt;')}</option>`)
+      .join('');
+    sel.value = wanted;
+  }
+  if(r.error) stat.textContent = 'error';
+}
+
+async function refreshAudio(){
+  try{
+    const r = await api('/api/camera/audio');
+    renderAudio(r);
+  }catch(e){}
+}
+
+async function setAudio(body){
+  try{
+    const r = await api('/api/camera/audio', body);
+    renderAudio(r);
+  }catch(e){}
+}
+
+audEl('auddevice').onchange = (e) => setAudio({ device: e.target.value });
+audEl('audvol').onchange = (e) => setAudio({ volume: Number(e.target.value) / 100 });
+audEl('audvol').oninput = (e) => { audEl('audbar').style.width = e.target.value + '%'; };
+audEl('audmute').onclick = () => setAudio({ muted: !audMuted });
+audEl('audenabled').onchange = (e) => setAudio({ enabled: e.target.checked });
+audEl('audgate').onchange = (e) => setAudio({ gate: e.target.checked });
+refreshAudio();
+setInterval(refreshAudio, 1500);
 
 refresh();
 connectFeed();

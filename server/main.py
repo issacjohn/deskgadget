@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .core.base import load_plugins
+from .core.audio import AudioSink
 from .core.hub import Conn, Hub
 from .core.web import open_url
 from .core.netutil import AdbBridge, Beacon, Discovery, lan_ip
@@ -58,6 +59,7 @@ BASE = Path(__file__).resolve().parent
 store = Store()
 hub = Hub(store, {}, store.data.get("server_name", "DeskGadget"), PORT)
 hub.version = updates.current_version()
+audio_sink = AudioSink()
 discovery = Discovery(PORT, hub.server_name)
 beacon = Beacon(PORT, hub.server_name)
 adb = AdbBridge(PORT)
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
     discovery.start()
     beacon.start()
     adb.start()
+    audio_sink.start()
     state_task = asyncio.create_task(_dashboard_loop(), name="dashboard-state")
     reaper_task = asyncio.create_task(_reaper_loop(), name="reaper")
     if vcam.is_registered():
@@ -96,6 +99,7 @@ async def lifespan(app: FastAPI):
     reaper_task.cancel()
     for mod in hub.modules.values():
         await mod.stop()
+    audio_sink.stop()
     beacon.stop()
     adb.stop()
     discovery.stop()
@@ -685,6 +689,37 @@ def _device_key(device: str, fallback: str = "") -> str:
     return (name or "Phone")[:40]
 
 
+_vcam_offer_lock = threading.Lock()
+_vcam_offered = False
+
+
+def _offer_virtual_camera() -> None:
+    """The camera started without a driver: offer to install it now.
+
+    The installer asks up front; if it was skipped, this is the second chance,
+    exactly when the phone camera is actually needed.
+    """
+    global _vcam_offered
+    with _vcam_offer_lock:
+        if _vcam_offered:
+            return
+        _vcam_offered = True
+    if vcam.is_registered():
+        return
+
+    def run() -> None:
+        log.info("camera is streaming without a virtual camera; offering setup")
+        ok, message = vcam.ensure()
+        _virtual_state.update(installed=vcam.is_registered(), message=message)
+        if ok:
+            _start_virtual_camera()
+            log.info("virtual camera installed on request: %s", message)
+        else:
+            log.warning("virtual camera setup skipped: %s", message)
+
+    threading.Thread(target=run, name="vcam-offer", daemon=True).start()
+
+
 def _store_frame(jpeg: bytes, rotation: int, device: str) -> None:
     with _camera_lock:
         _camera_frames[_device_key(device)] = {
@@ -692,6 +727,8 @@ def _store_frame(jpeg: bytes, rotation: int, device: str) -> None:
             "rotation": int(rotation) % 360,
             "ts": time.time(),
         }
+    if not _vcam_offered:
+        _offer_virtual_camera()
 
 
 def _live_frames(max_age: float = 4.0) -> list[tuple[str, dict]]:
@@ -1048,6 +1085,43 @@ async def api_camera_virtual_setup():
         "installed": vcam.is_registered(),
         "cameras": _virtual_summary()["cameras"],
     }
+
+
+@app.websocket("/ws/mic")
+async def ws_mic(ws: WebSocket):
+    """Raw 48 kHz mono PCM16 from the phone microphone."""
+    await ws.accept()
+    try:
+        while True:
+            data = await ws.receive_bytes()
+            if data and len(data) <= 1_000_000:
+                audio_sink.push(data)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.debug("microphone websocket closed", exc_info=True)
+
+
+@app.get("/api/camera/audio")
+async def api_camera_audio():
+    return {**audio_sink.snapshot(), "devices": audio_sink.devices()}
+
+
+@app.post("/api/camera/audio")
+async def api_camera_audio_set(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    state = audio_sink.configure(
+        enabled=body.get("enabled"),
+        device=body.get("device"),
+        volume=body.get("volume"),
+        muted=body.get("muted"),
+        gate=body.get("gate"),
+    )
+    return {**state, "devices": audio_sink.devices()}
 
 
 # --------------------------------------------------------------------------

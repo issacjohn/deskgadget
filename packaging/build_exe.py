@@ -154,6 +154,9 @@ def main() -> None:
         # the virtual camera: numpy frames into the DirectShow filter
         "--collect-all",
         "pyvirtualcam",
+        # phone microphone -> the PC's output device
+        "--collect-all",
+        "sounddevice",
         "--hidden-import",
         "numpy",
         "--collect-submodules",

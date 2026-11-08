@@ -74,6 +74,25 @@ def _reg_value(key: str, value: str = "") -> str:
         return ""
 
 
+def ask_for_driver() -> bool:
+    """One explicit choice at install; Windows still asks for permission."""
+    try:
+        import ctypes
+
+        answer = ctypes.windll.user32.MessageBoxW(
+            None,
+            "Install the DeskGadget Camera driver?\n\n"
+            "It lets Windows apps use this phone as a webcam. "
+            "Windows will ask for permission once.\n\n"
+            "If you skip it, DeskGadget will offer it again when you start the camera.",
+            "DeskGadget setup",
+            0x00000004 | 0x00000020 | 0x00040000,  # YESNO | QUESTION | TOPMOST
+        )
+        return answer == 6  # IDYES
+    except Exception:
+        return True
+
+
 def register_virtual_camera(target: Path) -> None:
     """Register the camera slots once, with a single UAC prompt.
 
@@ -106,6 +125,14 @@ def register_virtual_camera(target: Path) -> None:
     )
     if ready:
         print("  virtual cameras already registered")
+        return
+
+    if not ask_for_driver():
+        print("  camera driver skipped - DeskGadget will offer it when you start the camera")
+        try:
+            (target / "driver-declined").write_text("1", encoding="utf-8")
+        except OSError:
+            pass
         return
 
     print("  registering the virtual cameras (approve the Windows prompt)")
@@ -160,8 +187,12 @@ def register_virtual_camera(target: Path) -> None:
     current = _reg_value(r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32")
     if current and Path(current).parent.resolve() == dll.parent.resolve():
         print(f"  virtual cameras ready ({', '.join(friendly(s) or '?' for s in slots)})")
+        try:
+            (target / "driver-declined").unlink()
+        except OSError:
+            pass
     else:
-        print("  virtual camera not registered - the app can retry later")
+        print("  virtual camera not registered - the app will offer it again")
 
 
 def main() -> None:
