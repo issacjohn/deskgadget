@@ -1,7 +1,56 @@
 package com.deskgadget.app
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response as HttpCallResponse
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -9,6 +58,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +80,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.FlashOff
+import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Refresh
@@ -42,17 +96,21 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,10 +129,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,6 +196,7 @@ fun BlockView(
         "touchpad" -> TouchpadCard(block, accent, modifier) { action, payload ->
             onAction(action, payload)
         }
+        "camera" -> CameraCard(block, accent, endpoint, modifier)
     }
 }
 
@@ -1852,4 +1917,891 @@ private fun Modifier.clickableWith(
     interaction: MutableInteractionSource,
     onClick: () -> Unit,
 ): Modifier = this.pressable(interaction, onClick)
+
+/* ----------------------------- camera ----------------------------- */
+
+private data class PcCamera(val installed: Boolean, val name: String?)
+
+/** What the Windows side reports: whether the filter is set up and our camera's name. */
+private fun fetchPcCamera(endpoint: String, model: String): PcCamera? {
+    val base = when {
+        endpoint.startsWith("http://") || endpoint.startsWith("https://") -> endpoint
+        else -> "http://$endpoint"
+    }.trimEnd('/')
+    val conn = runCatching {
+        URL("$base/api/camera/virtual").openConnection() as HttpURLConnection
+    }.getOrNull() ?: return null
+    return try {
+        conn.connectTimeout = 2500
+        conn.readTimeout = 2500
+        conn.setRequestProperty("Accept", "application/json")
+        if (conn.responseCode != 200) return null
+        val json = JSONObject(conn.inputStream.bufferedReader().readText())
+        var name: String? = null
+        json.optJSONArray("cameras")?.let { cameras ->
+            for (i in 0 until cameras.length()) {
+                val camera = cameras.getJSONObject(i)
+                if (camera.optString("device").equals(model, ignoreCase = true)) {
+                    name = camera.optString("name").ifBlank { null }
+                }
+            }
+        }
+        PcCamera(json.optBoolean("installed", false), name)
+    } catch (_: Exception) {
+        null
+    } finally {
+        conn.disconnect()
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+@Composable
+private fun CameraCard(
+    block: JSONObject,
+    accent: Color,
+    endpoint: String,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val compact = LocalCompactLayout.current
+    var granted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var denied by rememberSaveable { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { allowed ->
+        granted = allowed
+        denied = !allowed
+    }
+
+    var lens by rememberSaveable { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+    var live by remember { mutableStateOf(false) }
+    val liveRef = remember { AtomicBoolean(false) }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var hasFront by remember { mutableStateOf(true) }
+    var hasBack by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var retry by remember { mutableIntStateOf(0) }
+    var fps by remember { mutableIntStateOf(0) }
+    var torch by remember { mutableStateOf(false) }
+    var cameraRef by remember { mutableStateOf<Camera?>(null) }
+    var pcCamera by remember { mutableStateOf<PcCamera?>(null) }
+    val resolutions = remember {
+        listOf(
+            android.util.Size(1920, 1080),
+            android.util.Size(1280, 720),
+            android.util.Size(640, 480),
+        )
+    }
+    val resolutionLabels = remember { listOf("1080p", "720p", "480p") }
+    var resolutionIndex by rememberSaveable { mutableIntStateOf(1) }
+
+    // Tell the user which Windows camera this phone feeds; it is the whole point
+    // of the module once the PC side is set up.
+    LaunchedEffect(endpoint) {
+        while (true) {
+            pcCamera = withContext(Dispatchers.IO) { fetchPcCamera(endpoint, Build.MODEL) }
+            delay(4000)
+        }
+    }
+
+    val stream = remember(endpoint) { CameraStream(endpoint) }
+    val analyzer = remember { Executors.newSingleThreadExecutor() }
+    val lastFrame = remember { AtomicLong(0L) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            fps = stream.takeCount()
+        }
+    }
+
+    // The main link reconnects on its own; the camera socket has to do the
+    // same or the deck says LIVE while sending nothing.
+    LaunchedEffect(live) {
+        while (live) {
+            if (!stream.isOpen()) stream.start()
+            delay(1500)
+        }
+    }
+
+    LaunchedEffect(granted, lens, previewView, resolutionIndex, retry) {
+        val view = previewView ?: return@LaunchedEffect
+        if (!granted) return@LaunchedEffect
+        val camera = runCatching { awaitCameraProvider(context) }.getOrNull()
+        if (camera == null) {
+            error = "Camera unavailable"
+            return@LaunchedEffect
+        }
+        provider = camera
+        hasFront = camera.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+        hasBack = camera.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+        val selector = when {
+            lens == CameraSelector.LENS_FACING_FRONT && hasFront -> CameraSelector.DEFAULT_FRONT_CAMERA
+            lens == CameraSelector.LENS_FACING_BACK && hasBack -> CameraSelector.DEFAULT_BACK_CAMERA
+            hasBack -> CameraSelector.DEFAULT_BACK_CAMERA
+            hasFront -> CameraSelector.DEFAULT_FRONT_CAMERA
+            else -> null
+        }
+        if (selector == null) {
+            error = "No camera found"
+            return@LaunchedEffect
+        }
+
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(view.surfaceProvider)
+        }
+        val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(resolutions[resolutionIndex])
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        analysis.setAnalyzer(analyzer) { image ->
+            if (!liveRef.get()) {
+                image.close()
+                return@setAnalyzer
+            }
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastFrame.get() < 33) {
+                image.close()
+                return@setAnalyzer
+            }
+            lastFrame.set(now)
+            try {
+                val rotation = image.imageInfo.rotationDegrees
+                image.toJpeg(50)?.let { jpeg -> stream.send(jpeg, rotation) }
+            } catch (_: Exception) {
+                // a dropped frame is fine; keep the preview smooth
+            } finally {
+                image.close()
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            runCatching {
+                camera.unbindAll()
+                val bound = camera.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                cameraRef = bound
+                bound.cameraControl.enableTorch(
+                    torch && lens == CameraSelector.LENS_FACING_BACK
+                )
+                error = null
+            }.onFailure { error = it.message ?: "Camera failed" }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { provider?.unbindAll() }
+            analyzer.shutdown()
+            stream.close()
+        }
+    }
+
+    GlassPanel(modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth > maxHeight * 1.15f
+            val dense = maxHeight < 330.dp
+            val gap = if (dense) 12.dp else 20.dp
+            val corner = if (dense) 16.dp else 18.dp
+
+            val preview: @Composable (Modifier) -> Unit = { paneModifier ->
+                Box(
+                    paneModifier
+                        .clip(RoundedCornerShape(corner))
+                        .background(Color(0xFF05070C))
+                        .border(
+                            1.dp,
+                            if (live) Color(0x555BE49B) else Color(0x1AFFFFFF),
+                            RoundedCornerShape(corner),
+                        )
+                        .semantics {
+                            contentDescription = if (live) {
+                                "Live camera preview, sending to the PC"
+                            } else {
+                                "Camera preview"
+                            }
+                        },
+                ) {
+                    if (granted) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PreviewView(ctx).apply {
+                                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            update = { previewView = it },
+                        )
+                    } else {
+                        Column(
+                            Modifier.align(Alignment.Center).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Lock,
+                                contentDescription = null,
+                                tint = Muted,
+                                modifier = Modifier.size(26.dp),
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Camera access needed",
+                                color = Ink,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Nothing leaves this phone until you start sending.",
+                                color = Muted,
+                                fontSize = 11.5.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+
+                    CameraBadge(
+                        live = live,
+                        fps = fps,
+                        granted = granted,
+                        modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                    )
+
+                    if (granted) {
+                        // scrim so the PC name stays readable over any image
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(72.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color(0xAA05070C))
+                                    )
+                                ),
+                        )
+                        PcCameraBar(
+                            state = pcCamera,
+                            live = live,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(12.dp),
+                        )
+                    }
+                }
+            }
+
+            val controls: @Composable (Modifier, Boolean) -> Unit = { panelModifier, footer ->
+                val body: @Composable (Modifier, Boolean) -> Unit = { bodyModifier, expand ->
+                    Column(bodyModifier) {
+                        Text(
+                            block.str("title").ifBlank { "Phone camera" },
+                            color = Ink,
+                            fontSize = if (dense) 17.sp else 20.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val needsSettings = !granted && denied
+                            Text(
+                                error ?: when {
+                                    needsSettings -> "Permission denied — open Settings"
+                                    !granted -> "Allow the camera to see a preview"
+                                    live -> "Your PC is receiving this view"
+                                    else -> "Preview only - nothing leaves this phone"
+                                },
+                                color = when {
+                                    error != null -> Color(0xFFFF8CA8)
+                                    needsSettings -> Color(0xFF7CE7FF)
+                                    live -> Color(0xFF5BE49B)
+                                    else -> Muted
+                                },
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .clickable(enabled = needsSettings) { openAppSettings(context) },
+                            )
+                            if (error != null) {
+                                Text(
+                                    "Retry",
+                                    color = Color(0xFF7CE7FF),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clickable {
+                                            error = null
+                                            retry += 1
+                                        }
+                                        .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+                                )
+                            }
+                        }
+
+                        if (expand) Spacer(Modifier.weight(1f))
+
+                        ControlLabel("LENS")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier
+                                    .weight(1f)
+                                    .selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SelectChip(
+                                    "Back",
+                                    selected = lens == CameraSelector.LENS_FACING_BACK,
+                                    enabled = hasBack,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    if (hasBack) {
+                                        lens = CameraSelector.LENS_FACING_BACK
+                                        error = null
+                                    }
+                                }
+                                SelectChip(
+                                    "Front",
+                                    selected = lens == CameraSelector.LENS_FACING_FRONT,
+                                    enabled = hasFront,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    if (hasFront) {
+                                        lens = CameraSelector.LENS_FACING_FRONT
+                                        torch = false
+                                        runCatching { cameraRef?.cameraControl?.enableTorch(false) }
+                                        error = null
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            TorchButton(
+                                on = torch,
+                                enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
+                            ) {
+                                if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
+                                    torch = !torch
+                                    runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            ControlLabel("QUALITY")
+                            Spacer(Modifier.weight(1f))
+                            val size = resolutions[resolutionIndex]
+                            Text(
+                                if (live) {
+                                    "${size.width}×${size.height} · $fps fps"
+                                } else {
+                                    "${size.width}×${size.height} · up to 30 fps"
+                                },
+                                color = Faint,
+                                fontSize = 9.5.sp,
+                                modifier = Modifier.padding(bottom = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectableGroup(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val hints = remember { listOf("Full HD", "HD", "Light") }
+                            resolutionLabels.forEachIndexed { index, label ->
+                                QualityChip(
+                                    label = label,
+                                    hint = hints[index],
+                                    selected = resolutionIndex == index,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    resolutionIndex = index
+                                    error = null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (footer) {
+                    Box(panelModifier) {
+                        body(Modifier.fillMaxSize().padding(bottom = 60.dp), true)
+                        CameraPrimaryButton(
+                            granted = granted,
+                            live = live,
+                            onAllow = { permission.launch(Manifest.permission.CAMERA) },
+                            onToggle = {
+                                live = !live
+                                liveRef.set(live)
+                                if (live) {
+                                    stream.start()
+                                } else {
+                                    stream.stop()
+                                    fps = 0
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
+                } else {
+                    Column(panelModifier) {
+                        body(Modifier.fillMaxWidth(), false)
+                        Spacer(Modifier.height(8.dp))
+                        CameraPrimaryButton(
+                            granted = granted,
+                            live = live,
+                            onAllow = { permission.launch(Manifest.permission.CAMERA) },
+                            onToggle = {
+                                live = !live
+                                liveRef.set(live)
+                                if (live) {
+                                    stream.start()
+                                } else {
+                                    stream.stop()
+                                    fps = 0
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
+            if (wide) {
+                Row(Modifier.fillMaxSize()) {
+                    preview(Modifier.weight(1.2f).fillMaxHeight())
+                    controls(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(start = gap),
+                        true,
+                    )
+                }
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    preview(Modifier.weight(1f).fillMaxWidth())
+                    Spacer(Modifier.height(if (dense) 8.dp else 12.dp))
+                    controls(Modifier.fillMaxWidth(), false)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraBadge(
+    live: Boolean,
+    fps: Int,
+    granted: Boolean,
+    modifier: Modifier,
+) {
+    val pulse by rememberInfiniteTransition(label = "live-dot").animateFloat(
+        initialValue = 1f,
+        targetValue = 0.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "live-dot-alpha",
+    )
+    val (text, tint) = when {
+        !granted -> "NO ACCESS" to Color(0xFFFFC96B)
+        live -> ("LIVE" + (if (fps > 0) " · $fps FPS" else "")) to Color(0xFF5BE49B)
+        else -> "READY" to Color(0xFF7CE7FF)
+    }
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0x99000000))
+            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .semantics { stateDescription = text },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(tint.copy(alpha = if (live) pulse else 1f))
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text,
+            color = Color.White,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/** "PC sees: DeskGadget Camera - SM-G980F", or the reason it does not. */
+@Composable
+private fun PcCameraBar(state: PcCamera?, live: Boolean, modifier: Modifier) {
+    if (state == null) return
+    val name = state.name
+    val (text, tint) = when {
+        !state.installed -> "PC camera not set up" to Color(0xFFFFC96B)
+        name != null -> name to Color(0xFF5BE49B)
+        live -> "PC is connecting…" to Muted
+        else -> "PC camera ready" to Muted
+    }
+    Row(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xB305070C))
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.DesktopWindows,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(13.dp),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text,
+            color = Color.White.copy(alpha = 0.92f),
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ControlLabel(text: String) {
+    Text(
+        text,
+        color = Muted,
+        fontSize = 9.5.sp,
+        letterSpacing = 1.4.sp,
+        modifier = Modifier.padding(bottom = 1.dp),
+    )
+}
+
+@Composable
+private fun SelectChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier
+            .height(48.dp)
+            .clip(shape)
+            .background(if (selected) Color(0x337CE7FF) else Color(0x14FFFFFF))
+            .border(
+                1.dp,
+                if (selected) Color(0x667CE7FF) else Color(0x1FFFFFFF),
+                shape,
+            )
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = when {
+                !enabled -> Faint.copy(alpha = 0.4f)
+                selected -> Color(0xFF7CE7FF)
+                else -> Ink.copy(alpha = 0.85f)
+            },
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun QualityChip(
+    label: String,
+    hint: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier
+            .height(48.dp)
+            .clip(shape)
+            .background(if (selected) Color(0x337CE7FF) else Color(0x14FFFFFF))
+            .border(
+                1.dp,
+                if (selected) Color(0x667CE7FF) else Color(0x1FFFFFFF),
+                shape,
+            )
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            label,
+            color = if (selected) Color(0xFF7CE7FF) else Ink.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            hint,
+            color = if (selected) Color(0xAA7CE7FF) else Faint,
+            fontSize = 8.5.sp,
+            letterSpacing = 0.3.sp,
+        )
+    }
+}
+
+@Composable
+private fun TorchButton(on: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(shape)
+            .background(if (on) Color(0x33FFC96B) else Color(0x14FFFFFF))
+            .border(1.dp, if (on) Color(0x66FFC96B) else Color(0x1FFFFFFF), shape)
+            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
+            .semantics {
+                contentDescription = "Torch"
+                if (!enabled) stateDescription = "Unavailable with the front camera"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (on) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
+            contentDescription = null,
+            tint = when {
+                !enabled -> Faint.copy(alpha = 0.4f)
+                on -> Color(0xFFFFC96B)
+                else -> Ink.copy(alpha = 0.8f)
+            },
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun CameraPrimaryButton(
+    granted: Boolean,
+    live: Boolean,
+    onAllow: () -> Unit,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label: String
+    val background: Brush
+    val foreground: Color
+    val border: Color
+    val action: () -> Unit
+    when {
+        !granted -> {
+            label = "Allow camera"
+            background = SolidColor(Color(0xFF7CE7FF))
+            foreground = Color(0xFF06121A)
+            border = Color(0x337CE7FF)
+            action = onAllow
+        }
+        live -> {
+            label = "Stop sending"
+            background = SolidColor(Color(0x14FFFFFF))
+            foreground = Color(0xFFFF8CA8)
+            border = Color(0x66FF8CA8)
+            action = onToggle
+        }
+        else -> {
+            label = "Start sending"
+            background = SolidColor(Color(0xFF7CE7FF))
+            foreground = Color(0xFF06121A)
+            border = Color(0x337CE7FF)
+            action = onToggle
+        }
+    }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(shape)
+            .background(background)
+            .border(1.dp, border, shape)
+            .clickable(onClick = action)
+            .semantics { contentDescription = label },
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (live) {
+            Box(Modifier.size(9.dp).clip(CircleShape).background(Color(0xFFFF8CA8)))
+        } else {
+            Icon(
+                if (granted) Icons.Rounded.Videocam else Icons.Rounded.PhotoCamera,
+                contentDescription = null,
+                tint = foreground,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            color = foreground,
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+private fun ImageProxy.toJpeg(quality: Int): ByteArray? {
+    val nv21 = toNv21() ?: return null
+    val yuv = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+    val out = ByteArrayOutputStream()
+    yuv.compressToJpeg(Rect(0, 0, width, height), quality, out)
+    return out.toByteArray()
+}
+
+/** YUV_420_888 to NV21 in one pass; avoids CameraX's slow RGBA conversion. */
+private fun ImageProxy.toNv21(): ByteArray? {
+    if (planes.size < 3) return null
+    val yPlane = planes[0]
+    val uPlane = planes[1]
+    val vPlane = planes[2]
+    if (width <= 0 || height <= 0) return null
+
+    val nv21 = ByteArray(width * height * 3 / 2)
+    val yBuffer = yPlane.buffer
+    yBuffer.rewind()
+    if (yPlane.pixelStride == 1 && yPlane.rowStride == width) {
+        yBuffer.get(nv21, 0, width * height)
+    } else {
+        val row = ByteArray(width)
+        for (r in 0 until height) {
+            yBuffer.position(r * yPlane.rowStride)
+            yBuffer.get(row, 0, width)
+            System.arraycopy(row, 0, nv21, r * width, width)
+        }
+    }
+
+    val uBuffer = uPlane.buffer
+    val vBuffer = vPlane.buffer
+    val chromaHeight = height / 2
+    val chromaWidth = width / 2
+    var pos = width * height
+    for (r in 0 until chromaHeight) {
+        for (c in 0 until chromaWidth) {
+            nv21[pos++] = vBuffer.get(r * vPlane.rowStride + c * vPlane.pixelStride)
+            nv21[pos++] = uBuffer.get(r * uPlane.rowStride + c * uPlane.pixelStride)
+        }
+    }
+    return nv21
+}
+
+private suspend fun awaitCameraProvider(context: Context): ProcessCameraProvider =
+    suspendCancellableCoroutine { cont ->
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener(
+            {
+                try {
+                    cont.resume(future.get())
+                } catch (exc: Exception) {
+                    cont.resumeWithException(exc)
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
+
+/** Persistent binary socket: one rotation byte, then the JPEG. */
+private class CameraStream(endpoint: String) {
+    private val url = when {
+        endpoint.startsWith("https://") -> "wss://" + endpoint.removePrefix("https://")
+        endpoint.startsWith("http://") -> "ws://" + endpoint.removePrefix("http://")
+        else -> "ws://$endpoint"
+    }.trimEnd('/') + "/ws/camera"
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+    private val counter = AtomicInteger(0)
+    private val open = AtomicBoolean(false)
+    @Volatile private var socket: WebSocket? = null
+
+    private val listener = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: HttpCallResponse) {
+            socket = webSocket
+            open.set(true)
+        }
+
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            open.set(false)
+            if (socket === webSocket) socket = null
+        }
+
+        override fun onFailure(
+            webSocket: WebSocket,
+            t: Throwable,
+            response: HttpCallResponse?,
+        ) {
+            open.set(false)
+            if (socket === webSocket) socket = null
+        }
+    }
+
+    fun start() {
+        if (socket != null) return
+        val request = Request.Builder().url(url).header("X-Device", Build.MODEL).build()
+        socket = client.newWebSocket(request, listener)
+    }
+
+    fun send(jpeg: ByteArray, rotation: Int) {
+        val ws = socket ?: return
+        if (!open.get()) return
+        if (ws.queueSize() > 1_500_000) return
+        val payload = ByteArray(jpeg.size + 1)
+        payload[0] = ((((rotation / 90) % 4) + 4) % 4).toByte()
+        System.arraycopy(jpeg, 0, payload, 1, jpeg.size)
+        if (ws.send(ByteString.of(*payload))) counter.incrementAndGet()
+    }
+
+    fun takeCount(): Int = counter.getAndSet(0)
+
+    fun isOpen(): Boolean = open.get()
+
+    fun stop() {
+        socket?.close(1000, "stop")
+        socket = null
+        open.set(false)
+    }
+
+    fun close() {
+        stop()
+        runCatching { client.dispatcher.executorService.shutdown() }
+        runCatching { client.connectionPool.evictAll() }
+    }
+}
 

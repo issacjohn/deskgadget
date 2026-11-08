@@ -158,6 +158,52 @@ def show_error(message: str) -> None:
         pass
 
 
+def virtual_camera_prompt() -> None:
+    """First run only: offer to register the DirectShow virtual camera.
+
+    The installer already does this, so the prompt only reaches people running
+    the portable EXE. It is asked once; reinstalling offers it again.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    marker = local_app_dir() / "virtual-camera-asked"
+    if marker.exists():
+        return
+    try:
+        from server.core import vcam
+    except Exception:
+        log.debug("virtual camera helper missing", exc_info=True)
+        return
+    if vcam.is_registered():
+        return
+
+    try:
+        answer = ctypes.windll.user32.MessageBoxW(
+            None,
+            "Use your phone as a camera in Windows apps?\n\n"
+            "DeskGadget installs a virtual camera called \"Unity Video Capture\". "
+            "Windows asks for permission once.\n\n"
+            "You can still send the camera feed to the dashboard without it.",
+            APP,
+            0x00000004 | 0x00000040 | 0x00040000,  # MB_YESNO | INFO | TOPMOST
+        )
+    except Exception:
+        return
+
+    if answer == 6:  # IDYES
+        try:
+            ok, message = vcam.ensure()
+            log.info("virtual camera setup: %s", message)
+            if not ok:
+                show_error(message)
+        except Exception:
+            log.exception("virtual camera setup failed")
+    try:
+        marker.write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # server
 # --------------------------------------------------------------------------- #
@@ -637,6 +683,7 @@ def main() -> int:
         _headless()
         return 0
 
+    virtual_camera_prompt()
     set_app_user_model_id()
 
     if not claim_single_instance():

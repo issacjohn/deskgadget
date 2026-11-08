@@ -9,15 +9,28 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var client: DeckClient
+
+    private fun setKeepScreen(on: Boolean) {
+        if (on) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,13 +61,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // dashboard-controlled "keep this phone awake" for desk use
-                LaunchedEffect(state.keepScreen) {
-                    if (state.keepScreen) {
-                        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    } else {
-                        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                // The dashboard is a companion screen: keep the display on while
+                // it is in front. The dashboard can additionally pin it awake
+                // when the app is not visible.
+                val keepAlways by rememberUpdatedState(state.keepScreen)
+                val lifecycle = LocalLifecycleOwner.current
+                DisposableEffect(lifecycle) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_RESUME -> setKeepScreen(true)
+                            Lifecycle.Event.ON_PAUSE -> setKeepScreen(keepAlways)
+                            else -> {}
+                        }
                     }
+                    lifecycle.lifecycle.addObserver(observer)
+                    onDispose { lifecycle.lifecycle.removeObserver(observer) }
                 }
 
                     LaunchedEffect(state.status) {

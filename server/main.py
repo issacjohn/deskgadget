@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import logging.handlers
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,7 +22,7 @@ from pathlib import Path
 import uvicorn
 import requests
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .core.base import load_plugins
@@ -30,6 +31,7 @@ from .core.web import open_url
 from .core.netutil import AdbBridge, Beacon, Discovery, lan_ip
 from .core.paths import dashboard_dir, plugins_dir, state_dir, templates_dir
 from .core.store import Store
+from .core import vcam
 
 PORT = 8787
 
@@ -78,9 +80,16 @@ async def lifespan(app: FastAPI):
     adb.start()
     state_task = asyncio.create_task(_dashboard_loop(), name="dashboard-state")
     reaper_task = asyncio.create_task(_reaper_loop(), name="reaper")
+    if vcam.is_registered():
+        _start_virtual_camera()
+    else:
+        log.info("virtual camera not set up yet - open the camera page on the phone")
     log.info("DeskGadget ready on http://%s:%s", lan_ip(), PORT)
     log.info("dashboard  -> http://localhost:%s", PORT)
     yield
+    _virtual_stop.set()
+    if _virtual_thread is not None:
+        _virtual_thread.join(2.0)
     state_task.cancel()
     reaper_task.cancel()
     for mod in hub.modules.values():
@@ -651,6 +660,392 @@ async def api_template():
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="deskgadget-module.zip"'},
     )
+
+
+# --------------------------------------------------------------------------
+# Phone camera frames (Camera module)
+# --------------------------------------------------------------------------
+_camera_lock = threading.RLock()
+_camera_frames: dict[str, dict] = {}
+_camera_upright: dict[str, dict] = {}
+
+_virtual_state: dict = {"error": "", "message": "", "installed": False}
+_virtual_stop = threading.Event()
+_virtual_thread: threading.Thread | None = None
+_vcampipes: dict[str, dict] = {}
+_vcam_slots: dict[int, str] = {}
+_vcam_lock = threading.RLock()
+VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 1920, 1080, 30
+
+
+def _device_key(device: str, fallback: str = "") -> str:
+    name = " ".join((device or fallback or "Phone").split())
+    return (name or "Phone")[:40]
+
+
+def _store_frame(jpeg: bytes, rotation: int, device: str) -> None:
+    with _camera_lock:
+        _camera_frames[_device_key(device)] = {
+            "jpeg": jpeg,
+            "rotation": int(rotation) % 360,
+            "ts": time.time(),
+        }
+
+
+def _live_frames(max_age: float = 4.0) -> list[tuple[str, dict]]:
+    """Newest first, one entry per phone that is still sending."""
+    now = time.time()
+    with _camera_lock:
+        items = [
+            (name, dict(info))
+            for name, info in _camera_frames.items()
+            if info["jpeg"] and now - info["ts"] <= max_age
+        ]
+    items.sort(key=lambda item: item[1]["ts"], reverse=True)
+    return items
+
+
+def _frame_ts(device: str | None) -> float:
+    with _camera_lock:
+        if device is None:
+            live = _live_frames(6.0)
+            return float(live[0][1]["ts"]) if live else 0.0
+        return float(_camera_frames.get(device, {}).get("ts", 0.0))
+
+
+def _upright_jpeg(device: str | None = None) -> bytes:
+    """Rotate a frame once, then reuse it until the phone sends a new one."""
+    target = device
+    with _camera_lock:
+        if target is None:
+            live = _live_frames(6.0)
+            if not live:
+                return b""
+            target = live[0][0]
+        info = _camera_frames.get(target)
+        if not info or not info["jpeg"]:
+            return b""
+        jpeg = info["jpeg"]
+        rotation = int(info["rotation"]) % 360
+        ts = float(info["ts"])
+        if rotation == 0:
+            return jpeg
+        cached = _camera_upright.get(target)
+        if cached and cached["ts"] == ts and cached["rotation"] == rotation:
+            return cached["jpeg"]
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        image = Image.open(BytesIO(jpeg))
+        image = image.rotate(-rotation, expand=True)
+        out = BytesIO()
+        image.convert("RGB").save(out, "JPEG", quality=80)
+        data = out.getvalue()
+    except Exception:
+        log.debug("could not rotate camera frame", exc_info=True)
+        return jpeg
+
+    with _camera_lock:
+        _camera_upright[target] = {"jpeg": data, "ts": ts, "rotation": rotation}
+    return data
+
+
+def _start_virtual_camera() -> None:
+    """Start the feeder thread once; the loop itself retries failures."""
+    global _virtual_thread
+    if _virtual_thread is not None and _virtual_thread.is_alive():
+        return
+    _virtual_stop.clear()
+    _virtual_thread = threading.Thread(
+        target=_virtual_camera_loop, name="virtual-camera", daemon=True
+    )
+    _virtual_thread.start()
+
+
+def _frame_image(jpeg: bytes):
+    """Decode a phone frame into a 1920x1080 RGB array for the filter."""
+    from io import BytesIO
+
+    import numpy as np
+    from PIL import Image
+
+    image = Image.open(BytesIO(jpeg)).convert("RGB")
+    if image.size != (VIRTUAL_W, VIRTUAL_H):
+        ratio = image.width / max(1, image.height)
+        if abs(ratio - (VIRTUAL_W / VIRTUAL_H)) < 0.02:
+            # 4:3 sources (1080p/720p/480p in portrait) scale cleanly
+            image = image.resize((VIRTUAL_W, VIRTUAL_H))
+        else:
+            canvas = Image.new("RGB", (VIRTUAL_W, VIRTUAL_H), (6, 8, 14))
+            image.thumbnail((VIRTUAL_W, VIRTUAL_H))
+            canvas.paste(
+                image,
+                (
+                    (VIRTUAL_W - image.width) // 2,
+                    (VIRTUAL_H - image.height) // 2,
+                ),
+            )
+            image = canvas
+    return np.asarray(image, dtype=np.uint8)
+
+
+def _open_virtual_camera(device: str) -> dict | None:
+    """Claim a filter slot, name it after the phone, and open it."""
+    import numpy as np
+    import pyvirtualcam
+
+    with _vcam_lock:
+        slot = next((s for s, owner in _vcam_slots.items() if owner == device), None)
+        if slot is None:
+            slot = next((s for s in range(vcam.SLOTS) if s not in _vcam_slots), None)
+            if slot is None:
+                return None
+            _vcam_slots[slot] = device
+        taken = {entry["name"] for entry in _vcampipes.values()}
+
+    name = vcam.phone_name(device)
+    if name in taken:
+        name = f"{name} #{slot + 1}"
+    if not vcam.set_slot_name(slot, name):
+        # no write access: keep the slot's built-in name, the feed still works
+        name = vcam.slot_friendly_name(slot) or vcam.slot_name(slot)
+
+    try:
+        cam = pyvirtualcam.Camera(
+            VIRTUAL_W,
+            VIRTUAL_H,
+            VIRTUAL_FPS,
+            fmt=pyvirtualcam.PixelFormat.RGB,
+            device=name,
+            backend="unitycapture",
+            print_fps=False,
+        )
+    except Exception:
+        with _vcam_lock:
+            _vcam_slots.pop(slot, None)
+        raise
+
+    entry = {
+        "cam": cam,
+        "slot": slot,
+        "name": name,
+        "ts": 0.0,
+        "seen": time.time(),
+        "last_sent": 0.0,
+        "frame": np.zeros((VIRTUAL_H, VIRTUAL_W, 3), np.uint8),
+    }
+    with _vcam_lock:
+        _vcampipes[device] = entry
+    log.info("virtual camera %s <- %s", name, device)
+    return entry
+
+
+def _close_virtual_camera(device: str) -> None:
+    with _vcam_lock:
+        entry = _vcampipes.pop(device, None)
+        if entry is not None:
+            _vcam_slots.pop(entry["slot"], None)
+    if entry is None:
+        return
+    try:
+        entry["cam"].close()
+    except Exception:
+        log.debug("could not close %s", entry["name"], exc_info=True)
+    try:
+        vcam.set_slot_name(entry["slot"], vcam.slot_name(entry["slot"]))
+    except Exception:
+        log.debug("could not reset the camera name", exc_info=True)
+    log.info("virtual camera released: %s", entry["name"])
+
+
+def _virtual_camera_loop() -> None:
+    """Feed every streaming phone into its own DirectShow camera."""
+    while not _virtual_stop.is_set():
+        tick = time.monotonic()
+        if not vcam.is_registered():
+            _virtual_state.update(error="", installed=False)
+            _virtual_stop.wait(5.0)
+            continue
+        try:
+            for device, info in _live_frames(4.0)[: vcam.SLOTS]:
+                entry = _vcampipes.get(device)
+                if entry is None:
+                    entry = _open_virtual_camera(device)
+                    if entry is None:
+                        break
+                fresh = False
+                if info["ts"] != entry["ts"]:
+                    entry["ts"] = float(info["ts"])
+                    jpeg = _upright_jpeg(device)
+                    if jpeg:
+                        try:
+                            entry["frame"] = _frame_image(jpeg)
+                            fresh = True
+                        except Exception:
+                            log.debug("could not decode a camera frame", exc_info=True)
+                    entry["seen"] = time.time()
+                # keep the device alive with the last frame, but do not burn CPU
+                # re-sending it at full rate while the phone is paused
+                now = time.time()
+                if fresh or now - entry["last_sent"] > 0.5:
+                    entry["cam"].send(entry["frame"])
+                    entry["last_sent"] = now
+            now = time.time()
+            for device in list(_vcampipes):
+                entry = _vcampipes.get(device)
+                if entry is not None and now - entry["seen"] > 120.0:
+                    _close_virtual_camera(device)
+            _virtual_state.update(error="", installed=True)
+        except Exception as exc:  # numpy/pyvirtualcam missing, device busy
+            _virtual_state.update(error=str(exc), installed=vcam.is_registered())
+            log.warning("virtual camera unavailable: %s", exc)
+            for device in list(_vcampipes):
+                _close_virtual_camera(device)
+            _virtual_stop.wait(4.0)
+            continue
+        delay = 1.0 / VIRTUAL_FPS - (time.monotonic() - tick)
+        if delay > 0:
+            _virtual_stop.wait(delay)
+    for device in list(_vcampipes):
+        _close_virtual_camera(device)
+
+
+@app.websocket("/ws/camera")
+async def ws_camera(ws: WebSocket):
+    """Binary frames from the phone: one rotation byte, then the JPEG."""
+    await ws.accept()
+    device = ws.headers.get("X-Device", "") or (
+        ws.client.host if ws.client else ""
+    )
+    try:
+        while True:
+            data = await ws.receive_bytes()
+            if len(data) < 3 or len(data) > 3_000_000:
+                continue
+            jpeg = data[1:]
+            if not jpeg.startswith(b"\xff\xd8"):
+                continue
+            _store_frame(jpeg, data[0] * 90, device)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.debug("camera websocket closed", exc_info=True)
+
+
+@app.post("/api/camera/frame")
+async def api_camera_frame(request: Request):
+    body = await request.body()
+    if not body or len(body) > 3_000_000 or not body.startswith(b"\xff\xd8"):
+        return JSONResponse({"error": "bad frame"}, status_code=400)
+    rotation = request.headers.get("X-Rotation", "0")
+    try:
+        rotation = int(rotation)
+    except ValueError:
+        rotation = 0
+    _store_frame(body, rotation, request.headers.get("X-Device", ""))
+    return {"ok": True}
+
+
+@app.get("/api/camera/latest.jpg")
+async def api_camera_latest(device: str | None = None):
+    jpeg = _upright_jpeg(device)
+    if not jpeg:
+        return JSONResponse({"error": "no frame"}, status_code=404)
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/camera/stream")
+async def api_camera_stream(request: Request, device: str | None = None):
+    async def frames():
+        last = 0.0
+        while not await request.is_disconnected():
+            jpeg = _upright_jpeg(device)
+            ts = _frame_ts(device)
+            if jpeg and ts != last:
+                last = ts
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                    + str(len(jpeg)).encode()
+                    + b"\r\n\r\n"
+                    + jpeg
+                    + b"\r\n"
+                )
+            await asyncio.sleep(0.06)
+
+    return StreamingResponse(
+        frames(), media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
+@app.get("/api/camera/status")
+async def api_camera_status():
+    live = _live_frames(5.0)
+    devices = [
+        {
+            "device": name,
+            "ts": info["ts"],
+            "bytes": len(info["jpeg"]),
+            "rotation": info["rotation"],
+        }
+        for name, info in live
+    ]
+    if not devices:
+        return {
+            "live": False,
+            "ts": 0.0,
+            "device": "",
+            "bytes": 0,
+            "rotation": 0,
+            "devices": [],
+        }
+    return {"live": True, **devices[0], "devices": devices}
+
+
+def _virtual_summary() -> dict:
+    with _vcam_lock:
+        cams = [
+            {"device": device, "slot": entry["slot"], "name": entry["name"]}
+            for device, entry in _vcampipes.items()
+        ]
+    cams.sort(key=lambda cam: cam["slot"])
+    default_name = vcam.slot_friendly_name(0) or vcam.DEVICE_NAME
+    return {
+        "active": bool(cams),
+        "device": cams[0]["name"] if cams else default_name,
+        "cameras": cams,
+        "installed": vcam.is_registered(),
+        "slots": vcam.SLOTS,
+        "error": _virtual_state.get("error", ""),
+        "message": _virtual_state.get("message", ""),
+    }
+
+
+@app.get("/api/camera/virtual")
+async def api_camera_virtual():
+    return _virtual_summary()
+
+
+@app.post("/api/camera/virtual/setup")
+async def api_camera_virtual_setup():
+    """Register the filter slots (one UAC prompt) and start feeding frames."""
+    ok, message = await asyncio.to_thread(vcam.ensure)
+    _virtual_state.update(installed=vcam.is_registered(), message=message)
+    if ok:
+        _virtual_state.update(error="")
+        _start_virtual_camera()
+    return {
+        "ok": ok,
+        "message": message,
+        "installed": vcam.is_registered(),
+        "cameras": _virtual_summary()["cameras"],
+    }
 
 
 # --------------------------------------------------------------------------

@@ -92,6 +92,10 @@ def main() -> None:
         datas.append(f"{adb_src}{';'}adb")
     if tools_src.exists():
         datas.append(f"{tools_src}{';'}packaging/tools")
+    uc_src = ROOT / "packaging" / "vendor" / "unitycapture"
+    if uc_src.exists():
+        # the DirectShow filter the server registers on first use
+        datas.append(f"{uc_src}{';'}unitycapture")
 
     extra: list[str] = []
     for d in datas:
@@ -143,12 +147,17 @@ def main() -> None:
         "pystray",
         "--hidden-import",
         "PIL.Image",
+        # the virtual camera: numpy frames into the DirectShow filter
+        "--collect-all",
+        "pyvirtualcam",
+        "--hidden-import",
+        "numpy",
+        "--collect-submodules",
+        "numpy",
         "--exclude-module",
         "tkinter",
         "--exclude-module",
         "matplotlib",
-        "--exclude-module",
-        "numpy",
     ]
 
     print("\n=== building portable app ===")
@@ -164,6 +173,10 @@ def main() -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(PAYLOAD, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(APP_EXE, "DeskGadget.exe")
+        for dll in ("UnityCaptureFilter32.dll", "UnityCaptureFilter64.dll"):
+            src = uc_src / dll
+            if src.exists():
+                zf.write(src, f"unitycapture/{dll}")
 
     print("\n=== building installer ===")
     pyinstaller(
