@@ -210,8 +210,8 @@ python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 
 ## Roadmap
 
-- Phone camera as a Windows webcam — beta, needs one permission prompt to
-  register the bundled virtual camera
+- Phone camera as a Windows webcam — beta. Each phone appears as its own camera
+  (`DeskGadget Camera - <phone>`) after one permission prompt
 - Home Assistant, GitHub notifications, Steam deals
 - Per-module page layouts on the phone
 
