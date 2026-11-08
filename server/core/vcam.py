@@ -120,10 +120,20 @@ def slot_friendly_name(slot: int) -> str:
     )
 
 
+def slot_device_path(slot: int) -> str:
+    """UnityCapture registers every slot as `foo:bar`; give each one its own id.
+
+    Apps that key on the device path (rather than the CLSID) otherwise treat the
+    slots as one camera and show the same feed for all of them.
+    """
+    return f"foo:bar:{slot}"
+
+
 def set_slot_name(slot: int, name: str) -> bool:
     """Rename a camera slot. Silently fails if setup did not grant write access."""
     instance = rf"CLSID\{CATEGORY_CLSID}\Instance\{slot_clsid(slot)}"
     ok = _write(instance, "FriendlyName", name)
+    _write(instance, "DevicePath", slot_device_path(slot))
     _write(rf"CLSID\{slot_clsid(slot)}", "", name)
     return ok
 
@@ -173,7 +183,8 @@ def _setup_script(target: Path) -> str:
         r'$user = "$env:USERDOMAIN\$env:USERNAME"',
         f"$category = '{CATEGORY_CLSID}'",
         "$slots = @(" + ",".join(f"'{slot_clsid(i)}'" for i in range(SLOTS)) + ")",
-        "foreach ($s in $slots) {",
+        "for ($i = 0; $i -lt $slots.Count; $i++) {",
+        "  $s = $slots[$i]",
         "  $keys = @(",
         '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$category\\Instance\\$s",',
         '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$s"',
@@ -187,6 +198,7 @@ def _setup_script(target: Path) -> str:
         "      Set-Acl $k $acl",
         "    }",
         "  }",
+        '  Set-ItemProperty -ErrorAction SilentlyContinue -Path "HKLM:\\SOFTWARE\\Classes\\CLSID\\$category\\Instance\\$s" -Name DevicePath -Value "foo:bar:$i"',
         "}",
     ]
     return "\r\n".join(lines)

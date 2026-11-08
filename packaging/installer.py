@@ -120,7 +120,8 @@ def register_virtual_camera(target: Path) -> None:
         r'$user = "$env:USERDOMAIN\$env:USERNAME"',
         f"$category = '{category}'",
         "$slots = @(" + ",".join(f"'{s}'" for s in slots) + ")",
-        "foreach ($s in $slots) {",
+        "for ($i = 0; $i -lt $slots.Count; $i++) {",
+        "  $s = $slots[$i]",
         "  $keys = @(",
         '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$category\\Instance\\$s",',
         '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$s"',
@@ -134,6 +135,7 @@ def register_virtual_camera(target: Path) -> None:
         "      Set-Acl $k $acl",
         "    }",
         "  }",
+        '  Set-ItemProperty -ErrorAction SilentlyContinue -Path "HKLM:\\SOFTWARE\\Classes\\CLSID\\$category\\Instance\\$s" -Name DevicePath -Value "foo:bar:$i"',
         "}",
     ]
     script_path = Path(tempfile.gettempdir()) / "deskgadget-vcam-setup.ps1"
