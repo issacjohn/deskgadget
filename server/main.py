@@ -834,6 +834,7 @@ def _open_virtual_camera(device: str) -> dict | None:
         "name": name,
         "ts": 0.0,
         "seen": time.time(),
+        "last_sent": 0.0,
         "frame": np.zeros((VIRTUAL_H, VIRTUAL_W, 3), np.uint8),
     }
     with _vcam_lock:
@@ -875,20 +876,27 @@ def _virtual_camera_loop() -> None:
                     entry = _open_virtual_camera(device)
                     if entry is None:
                         break
+                fresh = False
                 if info["ts"] != entry["ts"]:
                     entry["ts"] = float(info["ts"])
                     jpeg = _upright_jpeg(device)
                     if jpeg:
                         try:
                             entry["frame"] = _frame_image(jpeg)
+                            fresh = True
                         except Exception:
                             log.debug("could not decode a camera frame", exc_info=True)
-                entry["seen"] = time.time()
-                entry["cam"].send(entry["frame"])
+                    entry["seen"] = time.time()
+                # keep the device alive with the last frame, but do not burn CPU
+                # re-sending it at full rate while the phone is paused
+                now = time.time()
+                if fresh or now - entry["last_sent"] > 0.5:
+                    entry["cam"].send(entry["frame"])
+                    entry["last_sent"] = now
             now = time.time()
             for device in list(_vcampipes):
                 entry = _vcampipes.get(device)
-                if entry is not None and now - entry["seen"] > 12.0:
+                if entry is not None and now - entry["seen"] > 120.0:
                     _close_virtual_camera(device)
             _virtual_state.update(error="", installed=True)
         except Exception as exc:  # numpy/pyvirtualcam missing, device busy
