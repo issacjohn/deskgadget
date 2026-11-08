@@ -52,3 +52,6 @@ docs/*.mp4
 
 # release notes are drafted per build
 notes.md
+
+# local screenshots for social posts (never published)
+linkedin/
