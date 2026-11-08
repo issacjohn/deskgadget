@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -1927,6 +1928,8 @@ private fun CameraCard(
     var hasBack by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var fps by remember { mutableIntStateOf(0) }
+    var torch by remember { mutableStateOf(false) }
+    var cameraRef by remember { mutableStateOf<Camera?>(null) }
 
     val stream = remember(endpoint) { CameraStream(endpoint) }
     val analyzer = remember { Executors.newSingleThreadExecutor() }
@@ -1975,7 +1978,7 @@ private fun CameraCard(
                 return@setAnalyzer
             }
             val now = SystemClock.elapsedRealtime()
-            if (now - lastFrame.get() < 66) {
+            if (now - lastFrame.get() < 33) {
                 image.close()
                 return@setAnalyzer
             }
@@ -1993,7 +1996,11 @@ private fun CameraCard(
         withContext(Dispatchers.Main) {
             runCatching {
                 camera.unbindAll()
-                camera.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                val bound = camera.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                cameraRef = bound
+                bound.cameraControl.enableTorch(
+                    torch && lens == CameraSelector.LENS_FACING_BACK
+                )
                 error = null
             }.onFailure { error = it.message ?: "Camera failed" }
         }
@@ -2133,13 +2140,25 @@ private fun CameraCard(
                     ) {
                         if (hasFront) {
                             lens = CameraSelector.LENS_FACING_FRONT
+                            torch = false
+                            runCatching { cameraRef?.cameraControl?.enableTorch(false) }
                             error = null
+                        }
+                    }
+                    LensChip(
+                        "Torch",
+                        active = torch,
+                        enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
+                    ) {
+                        if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
+                            torch = !torch
+                            runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (live) "$fps fps · 640x480" else "640x480 · 10 fps target",
+                    if (live) "$fps fps · 640x480" else "640x480 · up to 30 fps",
                     color = Faint,
                     fontSize = 10.sp,
                 )
