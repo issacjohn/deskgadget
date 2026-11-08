@@ -3,8 +3,9 @@ package com.deskgadget.app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Matrix
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
 import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,15 +26,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response as HttpCallResponse
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -1929,14 +1928,14 @@ private fun CameraCard(
     var error by remember { mutableStateOf<String?>(null) }
     var fps by remember { mutableIntStateOf(0) }
 
-    val sender = remember(endpoint) { CameraSender(endpoint) }
+    val stream = remember(endpoint) { CameraStream(endpoint) }
     val analyzer = remember { Executors.newSingleThreadExecutor() }
     val lastFrame = remember { AtomicLong(0L) }
 
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
-            fps = sender.takeCount()
+            fps = stream.takeCount()
         }
     }
 
@@ -1969,7 +1968,6 @@ private fun CameraCard(
         val analysis = ImageAnalysis.Builder()
             .setTargetResolution(android.util.Size(640, 480))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .build()
         analysis.setAnalyzer(analyzer) { image ->
             if (!liveRef.get()) {
@@ -1977,13 +1975,14 @@ private fun CameraCard(
                 return@setAnalyzer
             }
             val now = SystemClock.elapsedRealtime()
-            if (now - lastFrame.get() < 90) {
+            if (now - lastFrame.get() < 66) {
                 image.close()
                 return@setAnalyzer
             }
             lastFrame.set(now)
             try {
-                image.toJpeg(55)?.let(sender::send)
+                val rotation = image.imageInfo.rotationDegrees
+                image.toJpeg(50)?.let { jpeg -> stream.send(jpeg, rotation) }
             } catch (_: Exception) {
                 // a dropped frame is fine; keep the preview smooth
             } finally {
@@ -2004,7 +2003,7 @@ private fun CameraCard(
         onDispose {
             runCatching { provider?.unbindAll() }
             analyzer.shutdown()
-            sender.close()
+            stream.close()
         }
     }
 
@@ -2154,7 +2153,12 @@ private fun CameraCard(
                         .clickable(enabled = granted) {
                             live = !live
                             liveRef.set(live)
-                            if (!live) sender.takeCount()
+                            if (live) {
+                                stream.start()
+                            } else {
+                                stream.stop()
+                                fps = 0
+                            }
                         },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -2226,30 +2230,47 @@ private fun LensChip(label: String, active: Boolean, enabled: Boolean, onClick: 
 }
 
 private fun ImageProxy.toJpeg(quality: Int): ByteArray? {
-    if (planes.isEmpty()) return null
-    val plane = planes[0]
-    if (plane.pixelStride != 4) return null
-    val buffer = plane.buffer
-    buffer.rewind()
-    val rowWidth = plane.rowStride / 4
-    if (rowWidth <= 0) return null
+    val nv21 = toNv21() ?: return null
+    val yuv = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+    val out = ByteArrayOutputStream()
+    yuv.compressToJpeg(Rect(0, 0, width, height), quality, out)
+    return out.toByteArray()
+}
 
-    val raw = Bitmap.createBitmap(rowWidth, height, Bitmap.Config.ARGB_8888)
-    raw.copyPixelsFromBuffer(buffer)
-    val cropped = if (rowWidth != width) Bitmap.createBitmap(raw, 0, 0, width, height) else raw
-    val rotated = if (imageInfo.rotationDegrees % 360 == 0) {
-        cropped
+/** YUV_420_888 to NV21 in one pass; avoids CameraX's slow RGBA conversion. */
+private fun ImageProxy.toNv21(): ByteArray? {
+    if (planes.size < 3) return null
+    val yPlane = planes[0]
+    val uPlane = planes[1]
+    val vPlane = planes[2]
+    if (width <= 0 || height <= 0) return null
+
+    val nv21 = ByteArray(width * height * 3 / 2)
+    val yBuffer = yPlane.buffer
+    yBuffer.rewind()
+    if (yPlane.pixelStride == 1 && yPlane.rowStride == width) {
+        yBuffer.get(nv21, 0, width * height)
     } else {
-        val matrix = Matrix().apply { postRotate(imageInfo.rotationDegrees.toFloat()) }
-        Bitmap.createBitmap(cropped, 0, 0, cropped.width, cropped.height, matrix, true)
+        val row = ByteArray(width)
+        for (r in 0 until height) {
+            yBuffer.position(r * yPlane.rowStride)
+            yBuffer.get(row, 0, width)
+            System.arraycopy(row, 0, nv21, r * width, width)
+        }
     }
 
-    val out = ByteArrayOutputStream()
-    rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
-    if (rotated !== cropped) rotated.recycle()
-    if (cropped !== raw) cropped.recycle()
-    raw.recycle()
-    return out.toByteArray()
+    val uBuffer = uPlane.buffer
+    val vBuffer = vPlane.buffer
+    val chromaHeight = height / 2
+    val chromaWidth = width / 2
+    var pos = width * height
+    for (r in 0 until chromaHeight) {
+        for (c in 0 until chromaWidth) {
+            nv21[pos++] = vBuffer.get(r * vPlane.rowStride + c * vPlane.pixelStride)
+            nv21[pos++] = uBuffer.get(r * uPlane.rowStride + c * uPlane.pixelStride)
+        }
+    }
+    return nv21
 }
 
 private suspend fun awaitCameraProvider(context: Context): ProcessCameraProvider =
@@ -2267,40 +2288,69 @@ private suspend fun awaitCameraProvider(context: Context): ProcessCameraProvider
         )
     }
 
-private class CameraSender(endpoint: String) {
-    private val url = endpoint.trimEnd('/') + "/api/camera/frame"
+/** Persistent binary socket: one rotation byte, then the JPEG. */
+private class CameraStream(endpoint: String) {
+    private val url = when {
+        endpoint.startsWith("https://") -> "wss://" + endpoint.removePrefix("https://")
+        endpoint.startsWith("http://") -> "ws://" + endpoint.removePrefix("http://")
+        else -> "ws://$endpoint"
+    }.trimEnd('/') + "/ws/camera"
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(3, TimeUnit.SECONDS)
-        .writeTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
-    private val busy = AtomicBoolean(false)
     private val counter = AtomicInteger(0)
+    private val open = AtomicBoolean(false)
+    @Volatile private var socket: WebSocket? = null
 
-    fun send(jpeg: ByteArray) {
-        if (!busy.compareAndSet(false, true)) return
-        val request = Request.Builder()
-            .url(url)
-            .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
-            .header("X-Device", Build.MODEL)
-            .build()
-        client.newCall(request).enqueue(
-            object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    busy.set(false)
-                }
+    private val listener = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: HttpCallResponse) {
+            socket = webSocket
+            open.set(true)
+        }
 
-                override fun onResponse(call: Call, response: HttpCallResponse) {
-                    response.close()
-                    counter.incrementAndGet()
-                    busy.set(false)
-                }
-            }
-        )
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            open.set(false)
+            if (socket === webSocket) socket = null
+        }
+
+        override fun onFailure(
+            webSocket: WebSocket,
+            t: Throwable,
+            response: HttpCallResponse?,
+        ) {
+            open.set(false)
+            if (socket === webSocket) socket = null
+        }
+    }
+
+    fun start() {
+        if (socket != null) return
+        val request = Request.Builder().url(url).header("X-Device", Build.MODEL).build()
+        socket = client.newWebSocket(request, listener)
+    }
+
+    fun send(jpeg: ByteArray, rotation: Int) {
+        val ws = socket ?: return
+        if (!open.get()) return
+        if (ws.queueSize() > 1_500_000) return
+        val payload = ByteArray(jpeg.size + 1)
+        payload[0] = ((((rotation / 90) % 4) + 4) % 4).toByte()
+        System.arraycopy(jpeg, 0, payload, 1, jpeg.size)
+        if (ws.send(ByteString.of(*payload))) counter.incrementAndGet()
     }
 
     fun takeCount(): Int = counter.getAndSet(0)
 
+    fun stop() {
+        socket?.close(1000, "stop")
+        socket = null
+        open.set(false)
+    }
+
     fun close() {
+        stop()
         runCatching { client.dispatcher.executorService.shutdown() }
         runCatching { client.connectionPool.evictAll() }
     }

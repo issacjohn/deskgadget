@@ -656,7 +656,67 @@ async def api_template():
 # --------------------------------------------------------------------------
 # Phone camera frames (Camera module)
 # --------------------------------------------------------------------------
-_camera_frame: dict = {"jpeg": b"", "ts": 0.0, "device": ""}
+_camera_frame: dict = {"jpeg": b"", "rotation": 0, "ts": 0.0, "device": ""}
+_camera_upright: dict = {"jpeg": b"", "ts": 0.0, "rotation": 0}
+
+
+def _store_frame(jpeg: bytes, rotation: int, device: str) -> None:
+    _camera_frame.update(
+        jpeg=jpeg,
+        rotation=int(rotation) % 360,
+        ts=time.time(),
+        device=device,
+    )
+
+
+def _upright_jpeg() -> bytes:
+    """Rotate the newest frame once, then reuse it until the next frame."""
+    jpeg = _camera_frame["jpeg"]
+    if not jpeg:
+        return b""
+    rotation = int(_camera_frame["rotation"]) % 360
+    if rotation == 0:
+        return jpeg
+    if (
+        _camera_upright["ts"] == _camera_frame["ts"]
+        and _camera_upright["rotation"] == rotation
+    ):
+        return _camera_upright["jpeg"]
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        image = Image.open(BytesIO(jpeg))
+        image = image.rotate(-rotation, expand=True)
+        out = BytesIO()
+        image.convert("RGB").save(out, "JPEG", quality=80)
+        data = out.getvalue()
+    except Exception:
+        log.debug("could not rotate camera frame", exc_info=True)
+        data = jpeg
+    _camera_upright.update(jpeg=data, ts=_camera_frame["ts"], rotation=rotation)
+    return data
+
+
+@app.websocket("/ws/camera")
+async def ws_camera(ws: WebSocket):
+    """Binary frames from the phone: one rotation byte, then the JPEG."""
+    await ws.accept()
+    device = ws.headers.get("X-Device", "")
+    try:
+        while True:
+            data = await ws.receive_bytes()
+            if len(data) < 3 or len(data) > 3_000_000:
+                continue
+            jpeg = data[1:]
+            if not jpeg.startswith(b"\xff\xd8"):
+                continue
+            _store_frame(jpeg, data[0] * 90, device)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.debug("camera websocket closed", exc_info=True)
 
 
 @app.post("/api/camera/frame")
@@ -664,17 +724,18 @@ async def api_camera_frame(request: Request):
     body = await request.body()
     if not body or len(body) > 3_000_000 or not body.startswith(b"\xff\xd8"):
         return JSONResponse({"error": "bad frame"}, status_code=400)
-    _camera_frame.update(
-        jpeg=body,
-        ts=time.time(),
-        device=request.headers.get("X-Device", ""),
-    )
+    rotation = request.headers.get("X-Rotation", "0")
+    try:
+        rotation = int(rotation)
+    except ValueError:
+        rotation = 0
+    _store_frame(body, rotation, request.headers.get("X-Device", ""))
     return {"ok": True}
 
 
 @app.get("/api/camera/latest.jpg")
 async def api_camera_latest():
-    jpeg = _camera_frame["jpeg"]
+    jpeg = _upright_jpeg()
     if not jpeg:
         return JSONResponse({"error": "no frame"}, status_code=404)
     return Response(
@@ -689,7 +750,7 @@ async def api_camera_stream(request: Request):
     async def frames():
         last = 0.0
         while not await request.is_disconnected():
-            jpeg = _camera_frame["jpeg"]
+            jpeg = _upright_jpeg()
             ts = _camera_frame["ts"]
             if jpeg and ts != last:
                 last = ts
@@ -700,7 +761,7 @@ async def api_camera_stream(request: Request):
                     + jpeg
                     + b"\r\n"
                 )
-            await asyncio.sleep(0.08)
+            await asyncio.sleep(0.06)
 
     return StreamingResponse(
         frames(), media_type="multipart/x-mixed-replace; boundary=frame"
@@ -715,6 +776,7 @@ async def api_camera_status():
         "ts": _camera_frame["ts"],
         "device": _camera_frame["device"],
         "bytes": len(_camera_frame["jpeg"]),
+        "rotation": _camera_frame["rotation"],
     }
 
 
