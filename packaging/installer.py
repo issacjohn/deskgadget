@@ -62,14 +62,14 @@ def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
     )
 
 
-def _reg_value(key: str) -> str:
+def _reg_value(key: str, value: str = "") -> str:
     import winreg
 
     try:
         with winreg.OpenKey(
             winreg.HKEY_CLASSES_ROOT, key, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY
         ) as handle:
-            return str(winreg.QueryValueEx(handle, "")[0]).strip()
+            return str(winreg.QueryValueEx(handle, value)[0]).strip()
     except OSError:
         return ""
 
@@ -95,7 +95,7 @@ def register_virtual_camera(target: Path) -> None:
         return
 
     def friendly(slot: str) -> str:
-        return _reg_value(rf"CLSID\{category}\Instance\{slot}\FriendlyName")
+        return _reg_value(rf"CLSID\{category}\Instance\{slot}", "FriendlyName")
 
     current = _reg_value(r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32")
     ready = (
