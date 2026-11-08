@@ -671,7 +671,7 @@ _camera_upright: dict = {"jpeg": b"", "ts": 0.0, "rotation": 0}
 _virtual_state: dict = {"active": False, "error": "", "device": "Unity Video Capture"}
 _virtual_stop = threading.Event()
 _virtual_thread: threading.Thread | None = None
-VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 640, 480, 30
+VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 1280, 720, 30
 
 
 def _virtual_camera_loop() -> None:
@@ -705,16 +705,23 @@ def _virtual_camera_loop() -> None:
                         try:
                             image = Image.open(BytesIO(jpeg)).convert("RGB")
                             if image.size != (VIRTUAL_W, VIRTUAL_H):
-                                canvas = Image.new("RGB", (VIRTUAL_W, VIRTUAL_H), (6, 8, 14))
-                                image.thumbnail((VIRTUAL_W, VIRTUAL_H))
-                                canvas.paste(
-                                    image,
-                                    (
-                                        (VIRTUAL_W - image.width) // 2,
-                                        (VIRTUAL_H - image.height) // 2,
-                                    ),
-                                )
-                                image = canvas
+                                src_ratio = image.width / max(1, image.height)
+                                if abs(src_ratio - (VIRTUAL_W / VIRTUAL_H)) < 0.02:
+                                    # 4:3 sources (480p/360p/240p) scale cleanly
+                                    image = image.resize((VIRTUAL_W, VIRTUAL_H))
+                                else:
+                                    canvas = Image.new(
+                                        "RGB", (VIRTUAL_W, VIRTUAL_H), (6, 8, 14)
+                                    )
+                                    image.thumbnail((VIRTUAL_W, VIRTUAL_H))
+                                    canvas.paste(
+                                        image,
+                                        (
+                                            (VIRTUAL_W - image.width) // 2,
+                                            (VIRTUAL_H - image.height) // 2,
+                                        ),
+                                    )
+                                    image = canvas
                             frame = np.asarray(image, dtype=np.uint8)
                         except Exception:
                             log.debug("could not decode camera frame", exc_info=True)

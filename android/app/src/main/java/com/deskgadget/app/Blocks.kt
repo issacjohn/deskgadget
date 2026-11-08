@@ -1930,6 +1930,15 @@ private fun CameraCard(
     var fps by remember { mutableIntStateOf(0) }
     var torch by remember { mutableStateOf(false) }
     var cameraRef by remember { mutableStateOf<Camera?>(null) }
+    val resolutions = remember {
+        listOf(
+            android.util.Size(1920, 1080),
+            android.util.Size(1280, 720),
+            android.util.Size(640, 480),
+        )
+    }
+    val resolutionLabels = remember { listOf("1080p", "720p", "480p") }
+    var resolutionIndex by remember { mutableIntStateOf(1) }
 
     val stream = remember(endpoint) { CameraStream(endpoint) }
     val analyzer = remember { Executors.newSingleThreadExecutor() }
@@ -1951,7 +1960,7 @@ private fun CameraCard(
         }
     }
 
-    LaunchedEffect(granted, lens, previewView) {
+    LaunchedEffect(granted, lens, previewView, resolutionIndex) {
         val view = previewView ?: return@LaunchedEffect
         if (!granted) return@LaunchedEffect
         val camera = runCatching { awaitCameraProvider(context) }.getOrNull()
@@ -1978,7 +1987,7 @@ private fun CameraCard(
             it.setSurfaceProvider(view.surfaceProvider)
         }
         val analysis = ImageAnalysis.Builder()
-            .setTargetResolution(android.util.Size(640, 480))
+            .setTargetResolution(resolutions[resolutionIndex])
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
         analysis.setAnalyzer(analyzer) { image ->
@@ -2129,45 +2138,82 @@ private fun CameraCard(
                     fontSize = 11.5.sp,
                 )
                 Spacer(Modifier.weight(1f))
-                Text("LENS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LensChip(
-                        "Back",
-                        active = lens == CameraSelector.LENS_FACING_BACK,
-                        enabled = hasBack,
-                    ) {
-                        if (hasBack) {
-                            lens = CameraSelector.LENS_FACING_BACK
-                            error = null
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "LENS",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.5.sp,
+                        modifier = Modifier.width(86.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LensChip(
+                            "Back",
+                            active = lens == CameraSelector.LENS_FACING_BACK,
+                            enabled = hasBack,
+                            compact = true,
+                        ) {
+                            if (hasBack) {
+                                lens = CameraSelector.LENS_FACING_BACK
+                                error = null
+                            }
                         }
-                    }
-                    LensChip(
-                        "Front",
-                        active = lens == CameraSelector.LENS_FACING_FRONT,
-                        enabled = hasFront,
-                    ) {
-                        if (hasFront) {
-                            lens = CameraSelector.LENS_FACING_FRONT
-                            torch = false
-                            runCatching { cameraRef?.cameraControl?.enableTorch(false) }
-                            error = null
+                        LensChip(
+                            "Front",
+                            active = lens == CameraSelector.LENS_FACING_FRONT,
+                            enabled = hasFront,
+                            compact = true,
+                        ) {
+                            if (hasFront) {
+                                lens = CameraSelector.LENS_FACING_FRONT
+                                torch = false
+                                runCatching { cameraRef?.cameraControl?.enableTorch(false) }
+                                error = null
+                            }
                         }
-                    }
-                    LensChip(
-                        "Torch",
-                        active = torch,
-                        enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
-                    ) {
-                        if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
-                            torch = !torch
-                            runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
+                        LensChip(
+                            "Torch",
+                            active = torch,
+                            enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
+                            compact = true,
+                        ) {
+                            if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
+                                torch = !torch
+                                runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "RESOLUTION",
+                        color = Muted,
+                        fontSize = 9.5.sp,
+                        letterSpacing = 1.2.sp,
+                        modifier = Modifier.width(86.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        resolutionLabels.forEachIndexed { index, label ->
+                            LensChip(
+                                label,
+                                active = resolutionIndex == index,
+                                enabled = true,
+                                compact = true,
+                            ) {
+                                resolutionIndex = index
+                                error = null
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    if (live) "$fps fps · 640x480" else "640x480 · up to 30 fps",
+                    if (live) {
+                        "$fps fps · ${resolutionLabels[resolutionIndex]}"
+                    } else {
+                        "${resolutionLabels[resolutionIndex]} · up to 30 fps"
+                    },
                     color = Faint,
                     fontSize = 10.sp,
                 )
@@ -2229,10 +2275,16 @@ private fun CameraBadge(live: Boolean, fps: Int, modifier: Modifier) {
 }
 
 @Composable
-private fun LensChip(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun LensChip(
+    label: String,
+    active: Boolean,
+    enabled: Boolean,
+    compact: Boolean = false,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
-            .height(40.dp)
+            .height(if (compact) 34.dp else 40.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (active) Color(0x337CE7FF) else Color(0x14FFFFFF))
             .border(
@@ -2241,7 +2293,7 @@ private fun LensChip(label: String, active: Boolean, enabled: Boolean, onClick: 
                 RoundedCornerShape(12.dp),
             )
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = if (compact) 12.dp else 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -2251,7 +2303,7 @@ private fun LensChip(label: String, active: Boolean, enabled: Boolean, onClick: 
                 active -> Color(0xFF7CE7FF)
                 else -> Ink.copy(alpha = 0.85f)
             },
-            fontSize = 12.sp,
+            fontSize = if (compact) 11.5.sp else 12.sp,
             fontWeight = FontWeight.Medium,
         )
     }

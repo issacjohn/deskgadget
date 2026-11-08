@@ -947,6 +947,8 @@ fun DeckScreen(
                 onBeta = { on ->
                     betaUpdates = on
                     Updater.setBetaEnabled(context, on)
+                    // switching channels should look for that channel's build now
+                    if (on) checkNow()
                 },
                 onCoffee = {
                     supportOpen = false
