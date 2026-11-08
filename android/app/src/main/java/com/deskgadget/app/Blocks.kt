@@ -1942,6 +1942,15 @@ private fun CameraCard(
         }
     }
 
+    // The main link reconnects on its own; the camera socket has to do the
+    // same or the deck says LIVE while sending nothing.
+    LaunchedEffect(live) {
+        while (live) {
+            if (!stream.isOpen()) stream.start()
+            delay(1500)
+        }
+    }
+
     LaunchedEffect(granted, lens, previewView) {
         val view = previewView ?: return@LaunchedEffect
         if (!granted) return@LaunchedEffect
@@ -2361,6 +2370,8 @@ private class CameraStream(endpoint: String) {
     }
 
     fun takeCount(): Int = counter.getAndSet(0)
+
+    fun isOpen(): Boolean = open.get()
 
     fun stop() {
         socket?.close(1000, "stop")

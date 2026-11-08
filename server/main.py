@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import logging.handlers
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -78,9 +79,18 @@ async def lifespan(app: FastAPI):
     adb.start()
     state_task = asyncio.create_task(_dashboard_loop(), name="dashboard-state")
     reaper_task = asyncio.create_task(_reaper_loop(), name="reaper")
+    global _virtual_thread
+    _virtual_stop.clear()
+    _virtual_thread = threading.Thread(
+        target=_virtual_camera_loop, name="virtual-camera", daemon=True
+    )
+    _virtual_thread.start()
     log.info("DeskGadget ready on http://%s:%s", lan_ip(), PORT)
     log.info("dashboard  -> http://localhost:%s", PORT)
     yield
+    _virtual_stop.set()
+    if _virtual_thread is not None:
+        _virtual_thread.join(2.0)
     state_task.cancel()
     reaper_task.cancel()
     for mod in hub.modules.values():
@@ -658,6 +668,63 @@ async def api_template():
 # --------------------------------------------------------------------------
 _camera_frame: dict = {"jpeg": b"", "rotation": 0, "ts": 0.0, "device": ""}
 _camera_upright: dict = {"jpeg": b"", "ts": 0.0, "rotation": 0}
+_virtual_state: dict = {"active": False, "error": "", "device": "Unity Video Capture"}
+_virtual_stop = threading.Event()
+_virtual_thread: threading.Thread | None = None
+VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 640, 480, 30
+
+
+def _virtual_camera_loop() -> None:
+    """Feed the newest phone frame into the DirectShow virtual camera."""
+    while not _virtual_stop.is_set():
+        try:
+            from io import BytesIO
+
+            import numpy as np
+            import pyvirtualcam
+            from PIL import Image
+
+            with pyvirtualcam.Camera(
+                VIRTUAL_W,
+                VIRTUAL_H,
+                VIRTUAL_FPS,
+                fmt=pyvirtualcam.PixelFormat.RGB,
+                device="Unity Video Capture",
+                backend="unitycapture",
+                print_fps=False,
+            ) as cam:
+                _virtual_state.update(active=True, error="")
+                log.info("virtual camera ready: %s", cam.device)
+                frame = np.zeros((VIRTUAL_H, VIRTUAL_W, 3), np.uint8)
+                last_ts = 0.0
+                while not _virtual_stop.is_set():
+                    jpeg = _upright_jpeg()
+                    ts = _camera_frame["ts"]
+                    if jpeg and ts != last_ts:
+                        last_ts = ts
+                        try:
+                            image = Image.open(BytesIO(jpeg)).convert("RGB")
+                            if image.size != (VIRTUAL_W, VIRTUAL_H):
+                                canvas = Image.new("RGB", (VIRTUAL_W, VIRTUAL_H), (6, 8, 14))
+                                image.thumbnail((VIRTUAL_W, VIRTUAL_H))
+                                canvas.paste(
+                                    image,
+                                    (
+                                        (VIRTUAL_W - image.width) // 2,
+                                        (VIRTUAL_H - image.height) // 2,
+                                    ),
+                                )
+                                image = canvas
+                            frame = np.asarray(image, dtype=np.uint8)
+                        except Exception:
+                            log.debug("could not decode camera frame", exc_info=True)
+                    cam.send(frame)
+                    cam.sleep_until_next_frame()
+        except Exception as exc:  # filter missing, device busy, numpy absent
+            _virtual_state.update(active=False, error=str(exc))
+            log.warning("virtual camera unavailable: %s", exc)
+            _virtual_stop.wait(4.0)
+    _virtual_state.update(active=False)
 
 
 def _store_frame(jpeg: bytes, rotation: int, device: str) -> None:
@@ -778,6 +845,11 @@ async def api_camera_status():
         "bytes": len(_camera_frame["jpeg"]),
         "rotation": _camera_frame["rotation"],
     }
+
+
+@app.get("/api/camera/virtual")
+async def api_camera_virtual():
+    return dict(_virtual_state)
 
 
 # --------------------------------------------------------------------------
