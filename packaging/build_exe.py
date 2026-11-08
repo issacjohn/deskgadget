@@ -84,6 +84,10 @@ def main() -> None:
             shutil.copy2(src, stage / name)
 
     datas = [f"{stage}{';'}server"]
+    version_file = ROOT / "VERSION"
+    if version_file.exists():
+        # lets the dashboard show the desktop version and check for updates
+        datas.append(f"{version_file}{';'}.")
     for asset in ("icon.ico", "icon.png"):
         src = ROOT / "branding" / asset
         if src.exists():

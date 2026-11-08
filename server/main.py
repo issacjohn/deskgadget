@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import logging.handlers
+import os
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -31,7 +32,7 @@ from .core.web import open_url
 from .core.netutil import AdbBridge, Beacon, Discovery, lan_ip
 from .core.paths import dashboard_dir, plugins_dir, state_dir, templates_dir
 from .core.store import Store
-from .core import vcam
+from .core import updates, vcam
 
 PORT = 8787
 
@@ -56,6 +57,7 @@ except Exception:
 BASE = Path(__file__).resolve().parent
 store = Store()
 hub = Hub(store, {}, store.data.get("server_name", "DeskGadget"), PORT)
+hub.version = updates.current_version()
 discovery = Discovery(PORT, hub.server_name)
 beacon = Beacon(PORT, hub.server_name)
 adb = AdbBridge(PORT)
@@ -1049,6 +1051,44 @@ async def api_camera_virtual_setup():
 
 
 # --------------------------------------------------------------------------
+# Desktop app updates
+# --------------------------------------------------------------------------
+@app.get("/api/app/update")
+async def api_app_update(beta: int = 0, force: int = 0):
+    return await asyncio.to_thread(updates.check, beta=bool(beta), force=bool(force))
+
+
+@app.post("/api/app/update/download")
+async def api_app_update_download(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ok, message, state = await asyncio.to_thread(
+        updates.download, beta=bool((body or {}).get("beta", False))
+    )
+    return {"ok": ok, "message": message, "progress": state}
+
+
+@app.get("/api/app/update/progress")
+async def api_app_update_progress():
+    return updates.progress()
+
+
+@app.post("/api/app/update/apply")
+async def api_app_update_apply():
+    """Run the downloaded installer, then hand the process over to it."""
+    ok, message = await asyncio.to_thread(updates.apply)
+    if ok:
+        def _hand_over() -> None:
+            time.sleep(1.5)  # let the response reach the dashboard
+            os._exit(0)
+
+        threading.Thread(target=_hand_over, name="update-exit", daemon=True).start()
+    return {"ok": ok, "message": message}
+
+
+# --------------------------------------------------------------------------
 # Dashboard UI
 # --------------------------------------------------------------------------
 DASHBOARD = dashboard_dir()
@@ -1056,7 +1096,9 @@ DASHBOARD = dashboard_dir()
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    return HTMLResponse((DASHBOARD / "index.html").read_text(encoding="utf-8"))
+    # never let the webview keep an old dashboard after an update
+    html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 if DASHBOARD.exists():

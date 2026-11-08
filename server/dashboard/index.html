@@ -135,6 +135,12 @@
   .badge{font-size:11px;letter-spacing:.04em;background:linear-gradient(135deg,var(--primary-a),var(--primary-b));
     padding:2px 8px;border-radius:99px;font-weight:700;color:var(--on-accent)}
   .hint{font-size:13.5px;color:var(--muted);margin:0 0 16px;line-height:1.55}
+  .updatebar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
+  .updatebar .hint{margin:0}
+  .updbeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
+  .updbar{height:8px;border-radius:99px;background:rgba(var(--tint),.09);overflow:hidden}
+  .updbar>i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,#7CE7FF,#B69CFF);transition:width .25s ease}
 
   /* ---------- devices ---------- */
   .device{padding:14px 0;border-top:1px solid var(--line)}
@@ -300,7 +306,15 @@
     </div>
   </header>
 
-  <div class="grid">
+  <div class="updatebar glass" id="updatebar">
+    <span class="chip" id="updver">v—</span>
+    <span class="hint" id="updstatus" style="margin:0">Checking for updates…</span>
+    <div class="spacer"></div>
+    <button class="ghost" id="updcheck">Check for updates</button>
+    <label class="updbeta"><input type="checkbox" id="updbeta" /> Beta builds</label>
+  </div>
+
+  <div class="grid" style="margin-top:16px">
     <section class="card glass">
       <h2>DEVICES <span class="badge" id="devcount">0</span></h2>
       <p class="hint">Tick the modules each phone should show. Order controls swipe order.</p>
@@ -329,6 +343,24 @@
         <button class="ghost" onclick="window.open('/docs/plugins','_blank')">Module guide</button>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="modal" id="updModal">
+  <div class="sheet glass" style="max-width:540px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px" id="updtitle">Update DeskGadget</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="updlater">Later</button>
+    </div>
+    <div id="updnotes" style="white-space:pre-wrap;font-size:12px;line-height:1.6;color:var(--muted);max-height:220px;overflow:auto;margin:12px 0"></div>
+    <div id="updprogresswrap" hidden>
+      <div class="updbar"><i id="updbar"></i></div>
+      <p class="hint" id="updprogress" style="margin:8px 0 0"></p>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="updgo" disabled>Downloading…</button>
+    </div>
   </div>
 </div>
 
@@ -953,6 +985,184 @@ function markLive(on){
   chip.textContent = on ? 'live' : 'reconnecting';
   chip.style.color = on ? '' : '#FF8CA8';
 }
+/* ---- app updates ------------------------------------------------------ */
+const upd = {
+  busy: false,
+  beta: localStorage.getItem('updbeta') === '1',
+  available: false,
+  version: '',
+  notes: '',
+  state: 'idle',
+};
+const $upd = (id)=>document.getElementById(id);
+
+function cleanNotes(body){
+  return (body || '').split('\n')
+    .map(l => l.trim().replace(/^[-*]\s+/, '').replace(/^#+\s*/, '').replace(/\*\*|__|`/g, ''))
+    .filter(l => l && !l.startsWith('!['))
+    .join('\n')
+    .slice(0, 1600);
+}
+
+function setUpdMode(mode){
+  const btn = $upd('updcheck');
+  if(mode === 'update'){
+    btn.textContent = 'Update';
+    btn.className = 'primary';
+  }else{
+    btn.textContent = 'Check for updates';
+    btn.className = 'ghost';
+    btn.disabled = false;
+  }
+}
+
+async function checkUpdates(force){
+  if(upd.busy) return;
+  upd.busy = true;
+  $upd('updstatus').textContent = 'Checking for updates…';
+  try{
+    const r = await api(`/api/app/update?beta=${upd.beta ? 1 : 0}${force ? '&force=1' : ''}`);
+    $upd('updver').textContent = 'v' + (r.current || '—');
+    if(r.error){
+      $upd('updstatus').textContent = 'Could not check: ' + r.error;
+      setUpdMode('check');
+      return;
+    }
+    upd.available = !!r.available;
+    upd.version = r.latest || '';
+    upd.notes = r.notes || '';
+    if(r.available){
+      $upd('updstatus').textContent = `v${r.latest} is available${r.prerelease ? ' (beta)' : ''}.`;
+      setUpdMode('update');
+    }else{
+      $upd('updstatus').textContent = `You're on the latest build (v${r.current}).`;
+      setUpdMode('check');
+    }
+  }catch(e){
+    $upd('updstatus').textContent = 'Could not check for updates.';
+    setUpdMode('check');
+  }finally{
+    upd.busy = false;
+  }
+}
+
+function showUpdModal(){
+  $upd('updtitle').textContent = 'DeskGadget ' + upd.version;
+  $upd('updnotes').textContent = cleanNotes(upd.notes);
+  $upd('updModal').classList.add('show');
+}
+
+function renderProgress(p){
+  upd.state = p.state;
+  const wrap = $upd('updprogresswrap');
+  const bar = $upd('updbar');
+  const go = $upd('updgo');
+
+  if(p.state === 'downloading'){
+    wrap.hidden = false;
+    const pct = p.total > 0 ? Math.min(100, Math.round(p.received * 100 / p.total)) : 0;
+    bar.style.width = (p.total > 0 ? pct : 12) + '%';
+    $upd('updprogress').textContent = p.total > 0
+      ? `Downloading… ${pct}%`
+      : `Downloading… ${Math.round(p.received / 1048576)} MB`;
+    go.disabled = true;
+    go.textContent = 'Downloading…';
+    return;
+  }
+  if(p.state === 'ready'){
+    wrap.hidden = false;
+    bar.style.width = '100%';
+    $upd('updprogress').textContent = 'Downloaded. Restart to finish the update.';
+    go.disabled = false;
+    go.textContent = 'Update and restart';
+    return;
+  }
+  if(p.state === 'error'){
+    wrap.hidden = false;
+    bar.style.width = '100%';
+    bar.style.background = '#FF8CA8';
+    $upd('updprogress').textContent = 'Download failed: ' + (p.error || 'unknown error');
+    go.disabled = false;
+    go.textContent = 'Try again';
+    return;
+  }
+  wrap.hidden = true;
+  go.disabled = false;
+  go.textContent = 'Download';
+}
+
+function pollProgress(){
+  api('/api/app/update/progress').then(p => {
+    renderProgress(p);
+    if(p.state === 'downloading') setTimeout(pollProgress, 600);
+  }).catch(()=>{ setTimeout(pollProgress, 1500); });
+}
+
+async function startDownload(){
+  $upd('updprogresswrap').hidden = false;
+  $upd('updbar').style.width = '0';
+  $upd('updbar').style.background = '';
+  $upd('updprogress').textContent = 'Starting…';
+  $upd('updgo').disabled = true;
+  $upd('updgo').textContent = 'Downloading…';
+  try{
+    const r = await api('/api/app/update/download', { beta: upd.beta });
+    if(!r || !r.ok){
+      $upd('updprogress').textContent = (r && r.message) || 'Could not start the download.';
+      $upd('updgo').disabled = false;
+      $upd('updgo').textContent = 'Try again';
+      return;
+    }
+    renderProgress(r.progress || { state: 'downloading', received: 0, total: 0 });
+    pollProgress();
+  }catch(e){
+    $upd('updprogress').textContent = 'Could not start the download.';
+    $upd('updgo').disabled = false;
+    $upd('updgo').textContent = 'Try again';
+  }
+}
+
+async function openUpdate(){
+  if(!upd.available) return;
+  showUpdModal();
+  try{
+    const p = await api('/api/app/update/progress');
+    renderProgress(p);
+    if(p.state === 'downloading'){ pollProgress(); return; }
+    if(p.state === 'ready') return;
+  }catch(e){}
+  startDownload();
+}
+
+$upd('updcheck').onclick = ()=>{
+  if(upd.available) openUpdate();
+  else checkUpdates(true);
+};
+$upd('updbeta').checked = upd.beta;
+$upd('updbeta').onchange = (e)=>{
+  upd.beta = e.target.checked;
+  localStorage.setItem('updbeta', upd.beta ? '1' : '0');
+  upd.available = false;
+  checkUpdates(true);
+};
+$upd('updlater').onclick = ()=>$upd('updModal').classList.remove('show');
+$upd('updgo').onclick = async ()=>{
+  if(upd.state === 'ready'){
+    const go = $upd('updgo');
+    go.disabled = true;
+    go.textContent = 'Restarting…';
+    const r = await api('/api/app/update/apply', {});
+    if(!r || !r.ok){
+      go.disabled = false;
+      go.textContent = 'Update and restart';
+      $upd('updprogress').textContent = (r && r.message) || 'Could not start the update.';
+    }
+    return;
+  }
+  startDownload();
+};
+checkUpdates(false);
+
 refresh();
 connectFeed();
 </script>

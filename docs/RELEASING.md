@@ -13,10 +13,14 @@ reaches a stable user.
 ## Stable release
 
 1. Merge the finished work into `main`.
-2. Bump both values in `android/app/build.gradle.kts`:
+2. Bump the Android version in `android/app/build.gradle.kts` **and the desktop
+   version in `VERSION`** (the dashboard shows it and checks GitHub against it):
    ```kotlin
    versionCode = 11          // always increases
    versionName = "1.4.0"
+   ```
+   ```text
+   VERSION: 1.4.0
    ```
 3. Build the artifacts:
    ```
@@ -40,7 +44,8 @@ Do **not** pass `--prerelease` for a stable build.
    git merge main
    ```
 2. Set a beta version name, with a `versionCode` higher than the previous
-   build (beta and stable share the same counter):
+   build (beta and stable share the same counter), and the same value in
+   `VERSION` for the desktop app:
    ```kotlin
    versionCode = 12
    versionName = "1.4.0-beta.1"
@@ -73,6 +78,12 @@ Do **not** pass `--prerelease` for a stable build.
 
 ## Windows
 
-The desktop app has no in-app updater yet. Beta Windows installers can be
-attached to the pre-release with the same `--prerelease` flag; stable users
-keep getting the installer from the latest stable release.
+The desktop app updates from the dashboard: **Check for updates** compares the
+bundled `VERSION` with the newest GitHub release (stable by default; tick **Beta
+builds** for pre-releases), and **Update now** downloads `DeskGadget-Setup.exe`
+and hands over to it. The installer keeps `data/` and `plugins/`, so an update is
+just "run the new setup".
+
+Beta Windows installers can be attached to the pre-release with the same
+`--prerelease` flag; stable users keep getting the installer from the latest
+stable release.
