@@ -1878,6 +1878,21 @@ private fun PageBody(
         return
     }
 
+    if (blocks.size == 1 && blocks[0].optString("type") == "camera") {
+        BlockView(
+            block = blocks[0],
+            module = page.id,
+            accent = accent,
+            endpoint = endpoint,
+            onAction = { action, payload -> onAction(page.id, action, payload) },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = if (compact) 6.dp else 20.dp)
+                .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
+        )
+        return
+    }
+
     if (blocks.size <= 1) {
         val scroll = rememberScrollState()
         BoxWithConstraints(Modifier.fillMaxSize()) {

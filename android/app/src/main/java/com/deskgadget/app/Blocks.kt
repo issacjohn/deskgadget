@@ -1,5 +1,45 @@
 package com.deskgadget.app
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.os.Build
+import android.os.SystemClock
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response as HttpCallResponse
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -48,6 +88,7 @@ import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -71,10 +112,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,6 +175,7 @@ fun BlockView(
         "touchpad" -> TouchpadCard(block, accent, modifier) { action, payload ->
             onAction(action, payload)
         }
+        "camera" -> CameraCard(block, accent, endpoint, modifier)
     }
 }
 
@@ -1852,4 +1896,413 @@ private fun Modifier.clickableWith(
     interaction: MutableInteractionSource,
     onClick: () -> Unit,
 ): Modifier = this.pressable(interaction, onClick)
+
+/* ----------------------------- camera ----------------------------- */
+
+@Composable
+private fun CameraCard(
+    block: JSONObject,
+    accent: Color,
+    endpoint: String,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val compact = LocalCompactLayout.current
+    var granted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted = it }
+
+    var lens by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+    var live by remember { mutableStateOf(false) }
+    val liveRef = remember { AtomicBoolean(false) }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var hasFront by remember { mutableStateOf(true) }
+    var hasBack by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var fps by remember { mutableIntStateOf(0) }
+
+    val sender = remember(endpoint) { CameraSender(endpoint) }
+    val analyzer = remember { Executors.newSingleThreadExecutor() }
+    val lastFrame = remember { AtomicLong(0L) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            fps = sender.takeCount()
+        }
+    }
+
+    LaunchedEffect(granted, lens, previewView) {
+        val view = previewView ?: return@LaunchedEffect
+        if (!granted) return@LaunchedEffect
+        val camera = runCatching { awaitCameraProvider(context) }.getOrNull()
+        if (camera == null) {
+            error = "Camera unavailable"
+            return@LaunchedEffect
+        }
+        provider = camera
+        hasFront = camera.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+        hasBack = camera.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+        val selector = when {
+            lens == CameraSelector.LENS_FACING_FRONT && hasFront -> CameraSelector.DEFAULT_FRONT_CAMERA
+            lens == CameraSelector.LENS_FACING_BACK && hasBack -> CameraSelector.DEFAULT_BACK_CAMERA
+            hasBack -> CameraSelector.DEFAULT_BACK_CAMERA
+            hasFront -> CameraSelector.DEFAULT_FRONT_CAMERA
+            else -> null
+        }
+        if (selector == null) {
+            error = "No camera found"
+            return@LaunchedEffect
+        }
+
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(view.surfaceProvider)
+        }
+        val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(android.util.Size(640, 480))
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .build()
+        analysis.setAnalyzer(analyzer) { image ->
+            if (!liveRef.get()) {
+                image.close()
+                return@setAnalyzer
+            }
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastFrame.get() < 90) {
+                image.close()
+                return@setAnalyzer
+            }
+            lastFrame.set(now)
+            try {
+                image.toJpeg(55)?.let(sender::send)
+            } catch (_: Exception) {
+                // a dropped frame is fine; keep the preview smooth
+            } finally {
+                image.close()
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            runCatching {
+                camera.unbindAll()
+                camera.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                error = null
+            }.onFailure { error = it.message ?: "Camera failed" }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { provider?.unbindAll() }
+            analyzer.shutdown()
+            sender.close()
+        }
+    }
+
+    GlassPanel(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .weight(1.25f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.Black),
+            ) {
+                if (granted) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).apply {
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { previewView = it },
+                    )
+                    CameraBadge(
+                        live = live,
+                        fps = fps,
+                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                    )
+                    error?.let {
+                        Text(
+                            it,
+                            color = Color(0xFFFF8CA8),
+                            fontSize = 11.sp,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(10.dp),
+                        )
+                    }
+                } else {
+                    Column(
+                        Modifier.align(Alignment.Center).padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            "Camera access needed",
+                            color = Ink,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "The preview only leaves this phone when you start sending.",
+                            color = Muted,
+                            fontSize = 11.5.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Box(
+                            Modifier
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF7CE7FF), Color(0xFFB69CFF))
+                                    )
+                                )
+                                .clickable { permission.launch(Manifest.permission.CAMERA) }
+                                .padding(horizontal = 22.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "Allow camera",
+                                color = Color(0xFF06121A),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = if (compact) 12.dp else 20.dp)
+            ) {
+                Text(
+                    block.str("label").ifBlank { "CAMERA" }.uppercase(),
+                    color = Muted,
+                    fontSize = 10.sp,
+                    letterSpacing = 2.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    block.str("title").ifBlank { "Phone camera" },
+                    color = Ink,
+                    fontSize = if (compact) 18.sp else 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when {
+                        !granted -> "Waiting for camera permission"
+                        live -> "Sending to the PC"
+                        else -> "Preview only - nothing is sent"
+                    },
+                    color = if (live) Color(0xFF5BE49B) else Muted,
+                    fontSize = 11.5.sp,
+                )
+                Spacer(Modifier.weight(1f))
+                Text("LENS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LensChip(
+                        "Back",
+                        active = lens == CameraSelector.LENS_FACING_BACK,
+                        enabled = hasBack,
+                    ) {
+                        if (hasBack) {
+                            lens = CameraSelector.LENS_FACING_BACK
+                            error = null
+                        }
+                    }
+                    LensChip(
+                        "Front",
+                        active = lens == CameraSelector.LENS_FACING_FRONT,
+                        enabled = hasFront,
+                    ) {
+                        if (hasFront) {
+                            lens = CameraSelector.LENS_FACING_FRONT
+                            error = null
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    if (live) "$fps fps · 640x480" else "640x480 · 10 fps target",
+                    color = Faint,
+                    fontSize = 10.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(if (live) Color(0xFFFF8CA8) else Color(0xFF7CE7FF))
+                        .clickable(enabled = granted) {
+                            live = !live
+                            liveRef.set(live)
+                            if (!live) sender.takeCount()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (live) "Stop sending" else "Start sending",
+                        color = if (live) Color(0xFF1A0A10) else Color(0xFF06121A),
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraBadge(live: Boolean, fps: Int, modifier: Modifier) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0x99000000))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (live) Color(0xFF5BE49B) else Color(0xFFFFC96B))
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (live) "LIVE" + (if (fps > 0) " · $fps fps" else "") else "PREVIEW",
+            color = Color.White,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun LensChip(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) Color(0x337CE7FF) else Color(0x14FFFFFF))
+            .border(
+                1.dp,
+                if (active) Color(0x667CE7FF) else Color(0x1FFFFFFF),
+                RoundedCornerShape(12.dp),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = when {
+                !enabled -> Faint.copy(alpha = 0.4f)
+                active -> Color(0xFF7CE7FF)
+                else -> Ink.copy(alpha = 0.85f)
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+private fun ImageProxy.toJpeg(quality: Int): ByteArray? {
+    if (planes.isEmpty()) return null
+    val plane = planes[0]
+    if (plane.pixelStride != 4) return null
+    val buffer = plane.buffer
+    buffer.rewind()
+    val rowWidth = plane.rowStride / 4
+    if (rowWidth <= 0) return null
+
+    val raw = Bitmap.createBitmap(rowWidth, height, Bitmap.Config.ARGB_8888)
+    raw.copyPixelsFromBuffer(buffer)
+    val cropped = if (rowWidth != width) Bitmap.createBitmap(raw, 0, 0, width, height) else raw
+    val rotated = if (imageInfo.rotationDegrees % 360 == 0) {
+        cropped
+    } else {
+        val matrix = Matrix().apply { postRotate(imageInfo.rotationDegrees.toFloat()) }
+        Bitmap.createBitmap(cropped, 0, 0, cropped.width, cropped.height, matrix, true)
+    }
+
+    val out = ByteArrayOutputStream()
+    rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    if (rotated !== cropped) rotated.recycle()
+    if (cropped !== raw) cropped.recycle()
+    raw.recycle()
+    return out.toByteArray()
+}
+
+private suspend fun awaitCameraProvider(context: Context): ProcessCameraProvider =
+    suspendCancellableCoroutine { cont ->
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener(
+            {
+                try {
+                    cont.resume(future.get())
+                } catch (exc: Exception) {
+                    cont.resumeWithException(exc)
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
+
+private class CameraSender(endpoint: String) {
+    private val url = endpoint.trimEnd('/') + "/api/camera/frame"
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .writeTimeout(6, TimeUnit.SECONDS)
+        .build()
+    private val busy = AtomicBoolean(false)
+    private val counter = AtomicInteger(0)
+
+    fun send(jpeg: ByteArray) {
+        if (!busy.compareAndSet(false, true)) return
+        val request = Request.Builder()
+            .url(url)
+            .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
+            .header("X-Device", Build.MODEL)
+            .build()
+        client.newCall(request).enqueue(
+            object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    busy.set(false)
+                }
+
+                override fun onResponse(call: Call, response: HttpCallResponse) {
+                    response.close()
+                    counter.incrementAndGet()
+                    busy.set(false)
+                }
+            }
+        )
+    }
+
+    fun takeCount(): Int = counter.getAndSet(0)
+
+    fun close() {
+        runCatching { client.dispatcher.executorService.shutdown() }
+        runCatching { client.connectionPool.evictAll() }
+    }
+}
 

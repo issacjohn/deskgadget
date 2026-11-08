@@ -21,7 +21,7 @@ from pathlib import Path
 import uvicorn
 import requests
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .core.base import load_plugins
@@ -651,6 +651,71 @@ async def api_template():
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="deskgadget-module.zip"'},
     )
+
+
+# --------------------------------------------------------------------------
+# Phone camera frames (Camera module)
+# --------------------------------------------------------------------------
+_camera_frame: dict = {"jpeg": b"", "ts": 0.0, "device": ""}
+
+
+@app.post("/api/camera/frame")
+async def api_camera_frame(request: Request):
+    body = await request.body()
+    if not body or len(body) > 3_000_000 or not body.startswith(b"\xff\xd8"):
+        return JSONResponse({"error": "bad frame"}, status_code=400)
+    _camera_frame.update(
+        jpeg=body,
+        ts=time.time(),
+        device=request.headers.get("X-Device", ""),
+    )
+    return {"ok": True}
+
+
+@app.get("/api/camera/latest.jpg")
+async def api_camera_latest():
+    jpeg = _camera_frame["jpeg"]
+    if not jpeg:
+        return JSONResponse({"error": "no frame"}, status_code=404)
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/camera/stream")
+async def api_camera_stream(request: Request):
+    async def frames():
+        last = 0.0
+        while not await request.is_disconnected():
+            jpeg = _camera_frame["jpeg"]
+            ts = _camera_frame["ts"]
+            if jpeg and ts != last:
+                last = ts
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                    + str(len(jpeg)).encode()
+                    + b"\r\n\r\n"
+                    + jpeg
+                    + b"\r\n"
+                )
+            await asyncio.sleep(0.08)
+
+    return StreamingResponse(
+        frames(), media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
+@app.get("/api/camera/status")
+async def api_camera_status():
+    live = bool(_camera_frame["jpeg"]) and (time.time() - _camera_frame["ts"] < 5)
+    return {
+        "live": live,
+        "ts": _camera_frame["ts"],
+        "device": _camera_frame["device"],
+        "bytes": len(_camera_frame["jpeg"]),
+    }
 
 
 # --------------------------------------------------------------------------
