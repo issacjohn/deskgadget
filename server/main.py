@@ -31,6 +31,7 @@ from .core.web import open_url
 from .core.netutil import AdbBridge, Beacon, Discovery, lan_ip
 from .core.paths import dashboard_dir, plugins_dir, state_dir, templates_dir
 from .core.store import Store
+from .core import vcam
 
 PORT = 8787
 
@@ -79,12 +80,10 @@ async def lifespan(app: FastAPI):
     adb.start()
     state_task = asyncio.create_task(_dashboard_loop(), name="dashboard-state")
     reaper_task = asyncio.create_task(_reaper_loop(), name="reaper")
-    global _virtual_thread
-    _virtual_stop.clear()
-    _virtual_thread = threading.Thread(
-        target=_virtual_camera_loop, name="virtual-camera", daemon=True
-    )
-    _virtual_thread.start()
+    if vcam.is_registered():
+        _start_virtual_camera()
+    else:
+        log.info("virtual camera not set up yet - open the camera page on the phone")
     log.info("DeskGadget ready on http://%s:%s", lan_ip(), PORT)
     log.info("dashboard  -> http://localhost:%s", PORT)
     yield
@@ -668,10 +667,28 @@ async def api_template():
 # --------------------------------------------------------------------------
 _camera_frame: dict = {"jpeg": b"", "rotation": 0, "ts": 0.0, "device": ""}
 _camera_upright: dict = {"jpeg": b"", "ts": 0.0, "rotation": 0}
-_virtual_state: dict = {"active": False, "error": "", "device": "Unity Video Capture"}
+_virtual_state: dict = {
+    "active": False,
+    "error": "",
+    "device": vcam.DEVICE_NAME,
+    "installed": False,
+    "message": "",
+}
 _virtual_stop = threading.Event()
 _virtual_thread: threading.Thread | None = None
-VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 1280, 720, 30
+VIRTUAL_W, VIRTUAL_H, VIRTUAL_FPS = 1920, 1080, 30
+
+
+def _start_virtual_camera() -> None:
+    """Start the feeder thread once; the loop itself retries failures."""
+    global _virtual_thread
+    if _virtual_thread is not None and _virtual_thread.is_alive():
+        return
+    _virtual_stop.clear()
+    _virtual_thread = threading.Thread(
+        target=_virtual_camera_loop, name="virtual-camera", daemon=True
+    )
+    _virtual_thread.start()
 
 
 def _virtual_camera_loop() -> None:
@@ -684,16 +701,19 @@ def _virtual_camera_loop() -> None:
             import pyvirtualcam
             from PIL import Image
 
+            if not vcam.is_registered():
+                raise RuntimeError("virtual camera is not set up yet")
+
             with pyvirtualcam.Camera(
                 VIRTUAL_W,
                 VIRTUAL_H,
                 VIRTUAL_FPS,
                 fmt=pyvirtualcam.PixelFormat.RGB,
-                device="Unity Video Capture",
+                device=vcam.DEVICE_NAME,
                 backend="unitycapture",
                 print_fps=False,
             ) as cam:
-                _virtual_state.update(active=True, error="")
+                _virtual_state.update(active=True, error="", installed=True)
                 log.info("virtual camera ready: %s", cam.device)
                 frame = np.zeros((VIRTUAL_H, VIRTUAL_W, 3), np.uint8)
                 last_ts = 0.0
@@ -728,7 +748,9 @@ def _virtual_camera_loop() -> None:
                     cam.send(frame)
                     cam.sleep_until_next_frame()
         except Exception as exc:  # filter missing, device busy, numpy absent
-            _virtual_state.update(active=False, error=str(exc))
+            _virtual_state.update(
+                active=False, error=str(exc), installed=vcam.is_registered()
+            )
             log.warning("virtual camera unavailable: %s", exc)
             _virtual_stop.wait(4.0)
     _virtual_state.update(active=False)
@@ -856,7 +878,20 @@ async def api_camera_status():
 
 @app.get("/api/camera/virtual")
 async def api_camera_virtual():
-    return dict(_virtual_state)
+    state = dict(_virtual_state)
+    state["installed"] = vcam.is_registered()
+    return state
+
+
+@app.post("/api/camera/virtual/setup")
+async def api_camera_virtual_setup():
+    """Register the filter (one UAC prompt) and start feeding frames."""
+    ok, message = await asyncio.to_thread(vcam.ensure)
+    _virtual_state.update(installed=vcam.is_registered(), message=message)
+    if ok:
+        _virtual_state.update(error="")
+        _start_virtual_camera()
+    return {"ok": ok, "message": message, "installed": vcam.is_registered()}
 
 
 # --------------------------------------------------------------------------

@@ -61,6 +61,59 @@ def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
     )
 
 
+def register_virtual_camera(target: Path) -> None:
+    """Register the DirectShow camera once, with a single UAC prompt."""
+    import winreg
+
+    dll = target / "unitycapture" / "UnityCaptureFilter64.dll"
+    dll32 = target / "unitycapture" / "UnityCaptureFilter32.dll"
+    if not dll.exists():
+        return
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT,
+            r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32",
+            0,
+            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        ) as key:
+            current = winreg.QueryValueEx(key, "")[0]
+        if Path(current).exists() and Path(current).parent.resolve() == dll.parent.resolve():
+            print("  virtual camera already registered")
+            return
+    except OSError:
+        pass
+
+    print("  registering the virtual camera (approve the Windows prompt)")
+    for path in (dll, dll32):
+        if not path.exists():
+            continue
+        script = (
+            "$p = Start-Process -FilePath regsvr32.exe "
+            "-ArgumentList '/s',\"{dll}\" -Verb RunAs -PassThru -Wait; "
+            "exit $p.ExitCode"
+        ).format(dll=path)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT,
+            r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32",
+            0,
+            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        ) as key:
+            current = str(winreg.QueryValueEx(key, "")[0])
+        if Path(current).parent.resolve() == dll.parent.resolve():
+            print("  virtual camera ready")
+        else:
+            print("  virtual camera not registered - the app can retry later")
+    except OSError:
+        print("  virtual camera not registered - the app can retry later")
+
+
 def main() -> None:
     print()
     print("  DeskGadget setup")
@@ -106,6 +159,8 @@ def main() -> None:
     exe = target / f"{APP}.exe"
     force_case(exe)
     print(f"  installed to {target}")
+
+    register_virtual_camera(target)
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
     if desktop.exists():
