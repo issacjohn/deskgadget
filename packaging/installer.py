@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -61,56 +62,103 @@ def make_shortcut(link: Path, exe: Path, workdir: Path) -> None:
     )
 
 
-def register_virtual_camera(target: Path) -> None:
-    """Register the DirectShow camera once, with a single UAC prompt."""
+def _reg_value(key: str) -> str:
     import winreg
 
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT, key, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+        ) as handle:
+            return str(winreg.QueryValueEx(handle, "")[0]).strip()
+    except OSError:
+        return ""
+
+
+def register_virtual_camera(target: Path) -> None:
+    """Register the camera slots once, with a single UAC prompt.
+
+    Four slots are registered so every phone can get its own Windows camera.
+    The same elevated script also grants this user write access to the slot
+    names, which is what lets the server rename a slot to "DeskGadget - <phone>"
+    later without another prompt.
+    """
+    category = "{860BB310-5D01-11d0-BD3B-00A0C911CE86}"
+    slots = [
+        "{5C2CD55C-92AD-4999-8666-912BD3E70010}",
+        "{5C2CD55C-92AD-4999-8666-912BD3E70012}",
+        "{5C2CD55C-92AD-4999-8666-912BD3E70013}",
+        "{5C2CD55C-92AD-4999-8666-912BD3E70014}",
+    ]
     dll = target / "unitycapture" / "UnityCaptureFilter64.dll"
     dll32 = target / "unitycapture" / "UnityCaptureFilter32.dll"
     if not dll.exists():
         return
 
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CLASSES_ROOT,
-            r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32",
-            0,
-            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
-        ) as key:
-            current = winreg.QueryValueEx(key, "")[0]
-        if Path(current).exists() and Path(current).parent.resolve() == dll.parent.resolve():
-            print("  virtual camera already registered")
-            return
-    except OSError:
-        pass
+    def friendly(slot: str) -> str:
+        return _reg_value(rf"CLSID\{category}\Instance\{slot}\FriendlyName")
 
-    print("  registering the virtual camera (approve the Windows prompt)")
-    for path in (dll, dll32):
-        if not path.exists():
-            continue
-        script = (
-            "$p = Start-Process -FilePath regsvr32.exe "
-            "-ArgumentList '/s',\"{dll}\" -Verb RunAs -PassThru -Wait; "
-            "exit $p.ExitCode"
-        ).format(dll=path)
+    current = _reg_value(r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32")
+    ready = (
+        current
+        and Path(current).exists()
+        and Path(current).parent.resolve() == dll.parent.resolve()
+        and all(friendly(s) for s in slots)
+    )
+    if ready:
+        print("  virtual cameras already registered")
+        return
+
+    print("  registering the virtual cameras (approve the Windows prompt)")
+    lines = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        f"$dll64 = '{dll}'",
+        f"$dll32 = '{dll32}'",
+        "$devices = '/i:UnityCaptureDevices=4'",
+        "$name = '/i:UnityCaptureName=DeskGadget Camera'",
+        '& regsvr32.exe /s "$dll64" "$devices" "$name"',
+        'if (Test-Path $dll32) { & regsvr32.exe /s "$dll32" "$devices" "$name" }',
+        r'$user = "$env:USERDOMAIN\$env:USERNAME"',
+        f"$category = '{category}'",
+        "$slots = @(" + ",".join(f"'{s}'" for s in slots) + ")",
+        "foreach ($s in $slots) {",
+        "  $keys = @(",
+        '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$category\\Instance\\$s",',
+        '    "HKLM:\\SOFTWARE\\Classes\\CLSID\\$s"',
+        "  )",
+        "  foreach ($k in $keys) {",
+        "    if (Test-Path $k) {",
+        "      $acl = Get-Acl $k",
+        "      $rule = New-Object System.Security.AccessControl.RegistryAccessRule(",
+        "        $user, 'SetValue,QueryValues,EnumerateSubKeys,ReadPermissions', 'Allow')",
+        "      $acl.SetAccessRule($rule)",
+        "      Set-Acl $k $acl",
+        "    }",
+        "  }",
+        "}",
+    ]
+    script_path = Path(tempfile.gettempdir()) / "deskgadget-vcam-setup.ps1"
+    try:
+        script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
+        launcher = (
+            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
+            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
+            "-Verb RunAs -Wait -WindowStyle Hidden"
+        )
         subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
             capture_output=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CLASSES_ROOT,
-            r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32",
-            0,
-            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
-        ) as key:
-            current = str(winreg.QueryValueEx(key, "")[0])
-        if Path(current).parent.resolve() == dll.parent.resolve():
-            print("  virtual camera ready")
-        else:
-            print("  virtual camera not registered - the app can retry later")
-    except OSError:
+    finally:
+        try:
+            script_path.unlink()
+        except OSError:
+            pass
+
+    current = _reg_value(r"CLSID\{5C2CD55C-92AD-4999-8666-912BD3E70010}\InprocServer32")
+    if current and Path(current).parent.resolve() == dll.parent.resolve():
+        print(f"  virtual cameras ready ({', '.join(friendly(s) or '?' for s in slots)})")
+    else:
         print("  virtual camera not registered - the app can retry later")
 
 
