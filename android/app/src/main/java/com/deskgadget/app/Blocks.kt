@@ -2114,262 +2114,293 @@ private fun CameraCard(
     }
 
     GlassPanel(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .weight(1.25f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF05070C))
-                    .border(
-                        1.dp,
-                        if (live) Color(0x555BE49B) else Color(0x1AFFFFFF),
-                        RoundedCornerShape(18.dp),
-                    )
-                    .semantics {
-                        contentDescription = if (live) {
-                            "Live camera preview, sending to the PC"
-                        } else {
-                            "Camera preview"
-                        }
-                    },
-            ) {
-                if (granted) {
-                    AndroidView(
-                        factory = { ctx ->
-                            PreviewView(ctx).apply {
-                                scaleType = PreviewView.ScaleType.FILL_CENTER
-                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth > maxHeight * 1.15f
+            val dense = maxHeight < 330.dp
+            val gap = if (dense) 12.dp else 20.dp
+            val corner = if (dense) 16.dp else 18.dp
+
+            val preview: @Composable (Modifier) -> Unit = { paneModifier ->
+                Box(
+                    paneModifier
+                        .clip(RoundedCornerShape(corner))
+                        .background(Color(0xFF05070C))
+                        .border(
+                            1.dp,
+                            if (live) Color(0x555BE49B) else Color(0x1AFFFFFF),
+                            RoundedCornerShape(corner),
+                        )
+                        .semantics {
+                            contentDescription = if (live) {
+                                "Live camera preview, sending to the PC"
+                            } else {
+                                "Camera preview"
                             }
                         },
-                        modifier = Modifier.fillMaxSize(),
-                        update = { previewView = it },
+                ) {
+                    if (granted) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PreviewView(ctx).apply {
+                                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            update = { previewView = it },
+                        )
+                    } else {
+                        Column(
+                            Modifier.align(Alignment.Center).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Lock,
+                                contentDescription = null,
+                                tint = Muted,
+                                modifier = Modifier.size(26.dp),
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Camera access needed",
+                                color = Ink,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Nothing leaves this phone until you start sending.",
+                                color = Muted,
+                                fontSize = 11.5.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+
+                    CameraBadge(
+                        live = live,
+                        fps = fps,
+                        granted = granted,
+                        modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
                     )
-                } else {
-                    Column(
-                        Modifier.align(Alignment.Center).padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            Icons.Rounded.Lock,
-                            contentDescription = null,
-                            tint = Muted,
-                            modifier = Modifier.size(26.dp),
+
+                    if (granted) {
+                        // scrim so the PC name stays readable over any image
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(72.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color(0xAA05070C))
+                                    )
+                                ),
                         )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "Camera access needed",
-                            color = Ink,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Nothing leaves this phone until you start sending.",
-                            color = Muted,
-                            fontSize = 11.5.sp,
-                            textAlign = TextAlign.Center,
+                        PcCameraBar(
+                            state = pcCamera,
+                            live = live,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(12.dp),
                         )
                     }
-                }
-
-                CameraBadge(
-                    live = live,
-                    fps = fps,
-                    modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                )
-
-                if (granted) {
-                    // scrim so the PC name stays readable over any image
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(72.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color(0xAA05070C))
-                                )
-                            ),
-                    )
-                    PcCameraBar(
-                        state = pcCamera,
-                        live = live,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(12.dp),
-                    )
                 }
             }
 
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(start = if (compact) 14.dp else 20.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        block.str("label").ifBlank { "CAMERA" }.uppercase(),
-                        color = Muted,
-                        fontSize = 10.sp,
-                        letterSpacing = 2.sp,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    CameraStatusPill(live = live, granted = granted)
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    block.str("title").ifBlank { "Phone camera" },
-                    color = Ink,
-                    fontSize = if (compact) 18.sp else 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        error ?: when {
-                            !granted && denied -> "Permission denied - allow it in settings"
-                            !granted -> "Allow the camera to see a preview"
-                            live -> "Your PC is receiving this view"
-                            else -> "Preview only - nothing leaves this phone"
-                        },
-                        color = when {
-                            error != null -> Color(0xFFFF8CA8)
-                            live -> Color(0xFF5BE49B)
-                            else -> Muted
-                        },
-                        fontSize = 11.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (error != null) {
+            val controls: @Composable (Modifier, Boolean) -> Unit = { panelModifier, footer ->
+                val body: @Composable (Modifier, Boolean) -> Unit = { bodyModifier, expand ->
+                    Column(bodyModifier) {
                         Text(
-                            "Retry",
-                            color = Color(0xFF7CE7FF),
-                            fontSize = 11.sp,
+                            block.str("title").ifBlank { "Phone camera" },
+                            color = Ink,
+                            fontSize = if (dense) 17.sp else 20.sp,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clickable {
-                                    error = null
-                                    retry += 1
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val needsSettings = !granted && denied
+                            Text(
+                                error ?: when {
+                                    needsSettings -> "Permission denied — open Settings"
+                                    !granted -> "Allow the camera to see a preview"
+                                    live -> "Your PC is receiving this view"
+                                    else -> "Preview only - nothing leaves this phone"
+                                },
+                                color = when {
+                                    error != null -> Color(0xFFFF8CA8)
+                                    needsSettings -> Color(0xFF7CE7FF)
+                                    live -> Color(0xFF5BE49B)
+                                    else -> Muted
+                                },
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .clickable(enabled = needsSettings) { openAppSettings(context) },
+                            )
+                            if (error != null) {
+                                Text(
+                                    "Retry",
+                                    color = Color(0xFF7CE7FF),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clickable {
+                                            error = null
+                                            retry += 1
+                                        }
+                                        .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+                                )
+                            }
+                        }
+
+                        if (expand) Spacer(Modifier.weight(1f))
+
+                        ControlLabel("LENS")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier
+                                    .weight(1f)
+                                    .selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SelectChip(
+                                    "Back",
+                                    selected = lens == CameraSelector.LENS_FACING_BACK,
+                                    enabled = hasBack,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    if (hasBack) {
+                                        lens = CameraSelector.LENS_FACING_BACK
+                                        error = null
+                                    }
                                 }
-                                .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+                                SelectChip(
+                                    "Front",
+                                    selected = lens == CameraSelector.LENS_FACING_FRONT,
+                                    enabled = hasFront,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    if (hasFront) {
+                                        lens = CameraSelector.LENS_FACING_FRONT
+                                        torch = false
+                                        runCatching { cameraRef?.cameraControl?.enableTorch(false) }
+                                        error = null
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            TorchButton(
+                                on = torch,
+                                enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
+                            ) {
+                                if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
+                                    torch = !torch
+                                    runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            ControlLabel("QUALITY")
+                            Spacer(Modifier.weight(1f))
+                            val size = resolutions[resolutionIndex]
+                            Text(
+                                if (live) {
+                                    "${size.width}×${size.height} · $fps fps"
+                                } else {
+                                    "${size.width}×${size.height} · up to 30 fps"
+                                },
+                                color = Faint,
+                                fontSize = 9.5.sp,
+                                modifier = Modifier.padding(bottom = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectableGroup(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val hints = remember { listOf("Full HD", "HD", "Light") }
+                            resolutionLabels.forEachIndexed { index, label ->
+                                QualityChip(
+                                    label = label,
+                                    hint = hints[index],
+                                    selected = resolutionIndex == index,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    resolutionIndex = index
+                                    error = null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (footer) {
+                    Box(panelModifier) {
+                        body(Modifier.fillMaxSize().padding(bottom = 60.dp), true)
+                        CameraPrimaryButton(
+                            granted = granted,
+                            live = live,
+                            onAllow = { permission.launch(Manifest.permission.CAMERA) },
+                            onToggle = {
+                                live = !live
+                                liveRef.set(live)
+                                if (live) {
+                                    stream.start()
+                                } else {
+                                    stream.stop()
+                                    fps = 0
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
+                } else {
+                    Column(panelModifier) {
+                        body(Modifier.fillMaxWidth(), false)
+                        Spacer(Modifier.height(8.dp))
+                        CameraPrimaryButton(
+                            granted = granted,
+                            live = live,
+                            onAllow = { permission.launch(Manifest.permission.CAMERA) },
+                            onToggle = {
+                                live = !live
+                                liveRef.set(live)
+                                if (live) {
+                                    stream.start()
+                                } else {
+                                    stream.stop()
+                                    fps = 0
+                                }
+                            },
                         )
                     }
                 }
+            }
 
-                Spacer(Modifier.weight(1f))
-
-                ControlLabel("LENS")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
+            if (wide) {
+                Row(Modifier.fillMaxSize()) {
+                    preview(Modifier.weight(1.2f).fillMaxHeight())
+                    controls(
                         Modifier
                             .weight(1f)
-                            .selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        SelectChip(
-                            "Back",
-                            selected = lens == CameraSelector.LENS_FACING_BACK,
-                            enabled = hasBack,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            if (hasBack) {
-                                lens = CameraSelector.LENS_FACING_BACK
-                                error = null
-                            }
-                        }
-                        SelectChip(
-                            "Front",
-                            selected = lens == CameraSelector.LENS_FACING_FRONT,
-                            enabled = hasFront,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            if (hasFront) {
-                                lens = CameraSelector.LENS_FACING_FRONT
-                                torch = false
-                                runCatching { cameraRef?.cameraControl?.enableTorch(false) }
-                                error = null
-                            }
-                        }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    TorchButton(
-                        on = torch,
-                        enabled = hasBack && lens == CameraSelector.LENS_FACING_BACK,
-                    ) {
-                        if (hasBack && lens == CameraSelector.LENS_FACING_BACK) {
-                            torch = !torch
-                            runCatching { cameraRef?.cameraControl?.enableTorch(torch) }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    ControlLabel("QUALITY")
-                    Spacer(Modifier.weight(1f))
-                    val size = resolutions[resolutionIndex]
-                    Text(
-                        if (live) {
-                            "${size.width}×${size.height} · $fps fps"
-                        } else {
-                            "${size.width}×${size.height} · up to 30 fps"
-                        },
-                        color = Faint,
-                        fontSize = 9.5.sp,
-                        modifier = Modifier.padding(bottom = 6.dp),
+                            .fillMaxHeight()
+                            .padding(start = gap),
+                        true,
                     )
                 }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    val hints = remember { listOf("Full HD", "HD", "Light") }
-                    resolutionLabels.forEachIndexed { index, label ->
-                        QualityChip(
-                            label = label,
-                            hint = hints[index],
-                            selected = resolutionIndex == index,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            resolutionIndex = index
-                            error = null
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(6.dp))
-                CameraPrimaryButton(
-                    granted = granted,
-                    live = live,
-                    onAllow = { permission.launch(Manifest.permission.CAMERA) },
-                    onToggle = {
-                        live = !live
-                        liveRef.set(live)
-                        if (live) {
-                            stream.start()
-                        } else {
-                            stream.stop()
-                            fps = 0
-                        }
-                    },
-                )
-                if (!granted) {
-                    Text(
-                        "Allow camera access in Settings",
-                        color = Color(0xFF7CE7FF),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .clickable { openAppSettings(context) }
-                            .padding(top = 4.dp)
-                            .semantics { contentDescription = "Open app settings to allow the camera" },
-                    )
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    preview(Modifier.weight(1f).fillMaxWidth())
+                    Spacer(Modifier.height(if (dense) 8.dp else 12.dp))
+                    controls(Modifier.fillMaxWidth(), false)
                 }
             }
         }
@@ -2377,7 +2408,12 @@ private fun CameraCard(
 }
 
 @Composable
-private fun CameraBadge(live: Boolean, fps: Int, modifier: Modifier) {
+private fun CameraBadge(
+    live: Boolean,
+    fps: Int,
+    granted: Boolean,
+    modifier: Modifier,
+) {
     val pulse by rememberInfiniteTransition(label = "live-dot").animateFloat(
         initialValue = 1f,
         targetValue = 0.45f,
@@ -2387,53 +2423,31 @@ private fun CameraBadge(live: Boolean, fps: Int, modifier: Modifier) {
         ),
         label = "live-dot-alpha",
     )
-    val dot = if (live) Color(0xFF5BE49B) else Color(0xFFFFC96B)
+    val (text, tint) = when {
+        !granted -> "NO ACCESS" to Color(0xFFFFC96B)
+        live -> ("LIVE" + (if (fps > 0) " · $fps FPS" else "")) to Color(0xFF5BE49B)
+        else -> "READY" to Color(0xFF7CE7FF)
+    }
     Row(
         modifier
             .clip(RoundedCornerShape(50))
             .background(Color(0x99000000))
-            .padding(horizontal = 9.dp, vertical = 4.dp),
+            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .semantics { stateDescription = text },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(dot.copy(alpha = if (live) pulse else 1f))
+                .background(tint.copy(alpha = if (live) pulse else 1f))
         )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            if (live) "LIVE" + (if (fps > 0) " · $fps FPS" else "") else "PREVIEW",
-            color = Color.White,
-            fontSize = 9.sp,
-            letterSpacing = 1.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun CameraStatusPill(live: Boolean, granted: Boolean) {
-    val (text, color) = when {
-        !granted -> "NO ACCESS" to Color(0xFFFFC96B)
-        live -> "LIVE" to Color(0xFF5BE49B)
-        else -> "READY" to Color(0xFF7CE7FF)
-    }
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color(0x14FFFFFF))
-            .padding(horizontal = 9.dp, vertical = 4.dp)
-            .semantics { stateDescription = text },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(6.dp))
         Text(
             text,
-            color = color,
+            color = Color.White,
             fontSize = 9.sp,
-            letterSpacing = 1.2.sp,
+            letterSpacing = 1.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -2481,7 +2495,7 @@ private fun ControlLabel(text: String) {
         color = Muted,
         fontSize = 9.5.sp,
         letterSpacing = 1.4.sp,
-        modifier = Modifier.padding(bottom = 2.dp),
+        modifier = Modifier.padding(bottom = 1.dp),
     )
 }
 
@@ -2599,6 +2613,7 @@ private fun CameraPrimaryButton(
     live: Boolean,
     onAllow: () -> Unit,
     onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val label: String
     val background: Brush
@@ -2630,9 +2645,9 @@ private fun CameraPrimaryButton(
     }
     val shape = RoundedCornerShape(16.dp)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(52.dp)
             .clip(shape)
             .background(background)
             .border(1.dp, border, shape)
