@@ -50,6 +50,7 @@
         <service
             android:name=".DeckService"
             android:exported="false"
+            android:stopWithTask="true"
             android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
