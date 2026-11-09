@@ -228,11 +228,11 @@ DeskGadget is free and open source. If it earned a place on your desk:
 ## Credits
 
 - **UnityCapture** (MIT) — the DirectShow filter behind the virtual camera.
-- **VB-CABLE** by VB-Audio — the virtual audio cable that lets the phone appear
-  as a microphone. The setup bundles the official package; finish its installer
-  and restart Windows, then DeskGadget detects the cable. It is **donationware**:
-  if it is useful to you, please support the project at
-  <https://vb-audio.com/Cable/>.
+- **VB-CABLE** by VB-Audio (<https://www.vb-cable.com>) — the virtual audio
+  cable that lets the phone appear as a microphone. The setup bundles the
+  official package; finish its installer and restart Windows, then DeskGadget
+  detects the cable. It is **donationware**: if it is useful to you, please
+  support the project at <https://vb-audio.com/Cable/>.
 
 ## License
 
