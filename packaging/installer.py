@@ -195,6 +195,61 @@ def register_virtual_camera(target: Path) -> None:
         print("  virtual camera not registered - the app will offer it again")
 
 
+VB_CABLE_URL = "https://vb-audio.com/Cable/"
+CABLE_NAME = "{a45c254e-df1c-4efd-8020-67d146a850e0},2"
+
+
+def _has_virtual_cable() -> bool:
+    """True when a VB-CABLE (or renamed) capture endpoint exists."""
+    import winreg
+
+    root = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+            for index in range(winreg.QueryInfoKey(key)[0]):
+                guid = winreg.EnumKey(key, index)
+                try:
+                    with winreg.OpenKey(key, rf"{guid}\Properties") as props:
+                        name = str(winreg.QueryValueEx(props, CABLE_NAME)[0]).lower()
+                except OSError:
+                    continue
+                if "cable output" in name or "deskgadget audio" in name:
+                    return True
+    except OSError:
+        pass
+    return False
+
+
+def install_virtual_cable(target: Path) -> None:
+    """Deploy the official VB-CABLE package, with its donationware credit."""
+    print("  VB-CABLE (www.vb-cable.com) is donationware by VB-Audio.")
+    print("  If it is useful to you, support the project:")
+    print(f"    {VB_CABLE_URL}")
+    if _has_virtual_cable():
+        print("  virtual audio cable already installed")
+        return
+    setup = target / "vbcable" / "VBCABLE_Setup_x64.exe"
+    if not setup.exists():
+        print("  VB-CABLE package missing from the payload")
+        return
+
+    print("  installing the virtual audio cable")
+    print("  in the VB-CABLE window click Install, then close it to continue")
+    script = (
+        "$p = Start-Process -FilePath '{exe}' -WorkingDirectory '{folder}' "
+        "-Verb RunAs -PassThru -Wait; exit $p.ExitCode"
+    ).format(exe=setup, folder=setup.parent)
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if _has_virtual_cable():
+        print("  virtual audio cable ready - the phone can appear as a microphone")
+    else:
+        print("  virtual audio cable installed - restart Windows to finish it")
+
+
 def main() -> None:
     print()
     print("  DeskGadget setup")
@@ -257,6 +312,7 @@ def main() -> None:
     print(f"  installed to {target}")
 
     register_virtual_camera(target)
+    install_virtual_cable(target)
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
     if desktop.exists():

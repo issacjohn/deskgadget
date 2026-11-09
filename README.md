@@ -205,6 +205,7 @@ cd android && gradle assembleDebug
 
 # windows installer (Python 3.11+, PyInstaller)
 powershell packaging/fetch_adb.ps1
+powershell packaging/fetch_vbcable.ps1
 python packaging/build_exe.py     # dist/DeskGadget-Setup.exe
 ```
 
@@ -223,6 +224,15 @@ DeskGadget is free and open source. If it earned a place on your desk:
 **[Buy me a coffee](https://buymeacoffee.com/issac_john)**
 
 ---
+
+## Credits
+
+- **UnityCapture** (MIT) — the DirectShow filter behind the virtual camera.
+- **VB-CABLE** by VB-Audio — the virtual audio cable that lets the phone appear
+  as a microphone. The setup bundles the official package; finish its installer
+  and restart Windows, then DeskGadget detects the cable. It is **donationware**:
+  if it is useful to you, please support the project at
+  <https://vb-audio.com/Cable/>.
 
 ## License
 

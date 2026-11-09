@@ -100,6 +100,10 @@ def main() -> None:
     if uc_src.exists():
         # the DirectShow filter the server registers on first use
         datas.append(f"{uc_src}{';'}unitycapture")
+    vbcable_src = ROOT / "packaging" / "vendor" / "vbcable" / "pack"
+    if vbcable_src.exists():
+        # the official VB-CABLE package, deployed by the installer
+        datas.append(f"{vbcable_src}{';'}vbcable")
 
     extra: list[str] = []
     for d in datas:
@@ -178,12 +182,17 @@ def main() -> None:
 
     print("\n=== packaging payload ===")
     BUILD.mkdir(parents=True, exist_ok=True)
+    vbcable = ROOT / "packaging" / "vendor" / "vbcable" / "pack"
     with zipfile.ZipFile(PAYLOAD, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(APP_EXE, "DeskGadget.exe")
         for dll in ("UnityCaptureFilter32.dll", "UnityCaptureFilter64.dll"):
             src = uc_src / dll
             if src.exists():
                 zf.write(src, f"unitycapture/{dll}")
+        if vbcable.exists():
+            for item in vbcable.rglob("*"):
+                if item.is_file():
+                    zf.write(item, f"vbcable/{item.relative_to(vbcable)}")
 
     print("\n=== building installer ===")
     pyinstaller(
