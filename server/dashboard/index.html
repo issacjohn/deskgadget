@@ -1209,6 +1209,13 @@ let audCable = '';
 
 function audEl(id){ return document.getElementById(id); }
 
+function cableLabel(name){
+  if(/cable (input|output)|vb-audio/i.test(name) && !/16ch|point/i.test(name)){
+    return 'DeskGadget Audio Interface';
+  }
+  return name.replace(/</g, '&lt;');
+}
+
 function cableScore(name){
   let score = 0;
   if(/^cable input/i.test(name)) score += 10;
@@ -1240,7 +1247,7 @@ function renderAudio(r){
   if(sel.dataset.sig !== signature){
     sel.dataset.sig = signature;
     sel.innerHTML = '<option value="">System default</option>' + names
-      .map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n.replace(/</g, '&lt;')}</option>`)
+      .map(n => `<option value="${n.replace(/"/g, '&quot;')}">${cableLabel(n)}</option>`)
       .join('');
     sel.value = wanted;
   }
@@ -1262,7 +1269,9 @@ function renderAudio(r){
   }
   if(cable){
     audEl('audhint').innerHTML =
-      `Virtual microphone detected: <b>${cable.replace(/</g, '&lt;')}</b> — use it above and call apps will list the phone as a microphone.`;
+      `Virtual microphone detected: <b>${cable.replace(/</g, '&lt;')}</b> — ` +
+      'rename it to <b>DeskGadget Audio Interface</b> in Settings → Sound (Windows allows ' +
+      'renaming endpoints there), then pick it in call apps.';
   }else{
     audEl('audhint').innerHTML =
       'Windows lists microphones from audio drivers. To use the phone as a mic in call apps, install a ' +

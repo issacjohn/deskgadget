@@ -111,6 +111,9 @@ class AudioSink:
                 key = name[:31].strip()  # MME truncates names; collapse duplicates
                 if not name or key in seen:
                     continue  # PortAudio lists the same device per host API
+                lowered = name.lower()
+                if "16ch" in lowered or "point" in lowered:
+                    continue  # VB-Cable's extra endpoints; one input is enough
                 seen.add(key)
                 out.append(
                     {
