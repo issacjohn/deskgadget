@@ -71,14 +71,19 @@ class AudioSink:
         if sd is None:
             return []
         out: list[dict] = []
+        seen: set[str] = set()
         try:
             for index, device in enumerate(sd.query_devices()):
                 if int(device.get("max_output_channels", 0)) <= 0:
                     continue
+                name = str(device.get("name", "")).strip()
+                if not name or name in seen:
+                    continue  # PortAudio lists the same device per host API
+                seen.add(name)
                 out.append(
                     {
                         "index": index,
-                        "name": str(device.get("name", "")),
+                        "name": name,
                         "channels": int(device.get("max_output_channels", 2)),
                         "rate": int(device.get("default_samplerate", 48000)),
                     }

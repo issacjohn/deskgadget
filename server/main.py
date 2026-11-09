@@ -15,6 +15,7 @@ import json
 import logging
 import logging.handlers
 import os
+import re
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -676,6 +677,7 @@ _camera_frames: dict[str, dict] = {}
 _camera_upright: dict[str, dict] = {}
 
 _virtual_state: dict = {"error": "", "message": "", "installed": False}
+
 _virtual_stop = threading.Event()
 _virtual_thread: threading.Thread | None = None
 _vcampipes: dict[str, dict] = {}
@@ -1096,15 +1098,80 @@ async def ws_mic(ws: WebSocket):
             data = await ws.receive_bytes()
             if data and len(data) <= 1_000_000:
                 audio_sink.push(data)
+                _offer_virtual_mic()
     except WebSocketDisconnect:
         pass
     except Exception:
         log.debug("microphone websocket closed", exc_info=True)
 
 
+CABLE_RE = re.compile(r"cable input|vb-audio|voicemeeter|virtual", re.IGNORECASE)
+VB_CABLE_URL = "https://vb-audio.com/Cable/"
+_mic_prompt = {"asked": False}
+_mic_prompt_lock = threading.Lock()
+
+
+def _virtual_mic_name(listed: list[dict] | None = None) -> str:
+    for device in listed if listed is not None else audio_sink.devices():
+        if CABLE_RE.search(str(device.get("name", ""))):
+            return str(device["name"])
+    return ""
+
+
+def _audio_payload() -> dict:
+    devices = audio_sink.devices()
+    cable = _virtual_mic_name(devices)
+    return {
+        **audio_sink.snapshot(),
+        "devices": devices,
+        "cable": cable,
+        "needs_virtual_mic": not cable,
+    }
+
+
+def _offer_virtual_mic() -> None:
+    """Audio started with no virtual cable: point the user at VB-CABLE, once.
+
+    The dashboard shows its own dialog while it is open; this is the fallback
+    for a closed window (the app lives in the tray).
+    """
+    with _mic_prompt_lock:
+        if _mic_prompt["asked"]:
+            return
+        _mic_prompt["asked"] = True
+
+    if not audio_sink.state.get("enabled"):
+        return
+    if _virtual_mic_name():
+        return
+
+    def run() -> None:
+        time.sleep(2.0)  # let the dashboard's websocket register first
+        if dashboard_clients:
+            return
+        try:
+            import ctypes
+
+            answer = ctypes.windll.user32.MessageBoxW(
+                None,
+                "Use the phone as a microphone in Teams, Zoom or Discord?\n\n"
+                "Windows needs a virtual audio device for that. Install VB-CABLE (free), "
+                "then choose it in the Phone Audio bar.\n\n"
+                "Open the download page now?",
+                "DeskGadget",
+                0x00000004 | 0x00000040 | 0x00040000,  # YESNO | INFO | TOPMOST
+            )
+            if answer == 6:
+                open_url(VB_CABLE_URL)
+        except Exception:
+            log.debug("microphone prompt failed", exc_info=True)
+
+    threading.Thread(target=run, name="mic-prompt", daemon=True).start()
+
+
 @app.get("/api/camera/audio")
 async def api_camera_audio():
-    return {**audio_sink.snapshot(), "devices": audio_sink.devices()}
+    return _audio_payload()
 
 
 @app.post("/api/camera/audio")
@@ -1114,14 +1181,14 @@ async def api_camera_audio_set(request: Request):
     except Exception:
         body = {}
     body = body or {}
-    state = audio_sink.configure(
+    audio_sink.configure(
         enabled=body.get("enabled"),
         device=body.get("device"),
         volume=body.get("volume"),
         muted=body.get("muted"),
         gate=body.get("gate"),
     )
-    return {**state, "devices": audio_sink.devices()}
+    return _audio_payload()
 
 
 # --------------------------------------------------------------------------

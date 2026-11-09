@@ -320,16 +320,18 @@
   </div>
 
   <div class="updatebar glass" id="audiobar">
-    <span class="hint" style="margin:0;letter-spacing:1.4px;font-size:10px">PHONE MIC</span>
+    <span class="hint" style="margin:0;letter-spacing:1.4px;font-size:10px">PHONE AUDIO</span>
     <span class="audmeter"><i id="audbar"></i></span>
     <span class="hint" id="audstat" style="margin:0">idle</span>
     <div class="spacer"></div>
     <select id="auddevice" class="audselect"></select>
     <input id="audvol" type="range" min="0" max="100" value="90" style="width:110px" />
+    <button class="primary" id="audmic" hidden>Use as mic</button>
     <button class="ghost" id="audmute">Mute</button>
     <label class="updbeta"><input type="checkbox" id="audgate" checked /> Noise gate</label>
     <label class="updbeta"><input type="checkbox" id="audenabled" checked /> On</label>
   </div>
+  <p class="hint" id="audhint" style="margin:8px 4px 0"></p>
 
   <div class="grid" style="margin-top:16px">
     <section class="card glass">
@@ -360,6 +362,26 @@
         <button class="ghost" onclick="window.open('/docs/plugins','_blank')">Module guide</button>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="modal" id="micModal">
+  <div class="sheet glass" style="max-width:520px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px">Use the phone as a microphone</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="miclater">Not now</button>
+    </div>
+    <p class="hint" style="margin:14px 0 0;line-height:1.6">
+      Windows lists microphones that come from an audio driver. Install
+      <b>VB-CABLE</b> (free), then DeskGadget detects it and routes the phone into
+      it — Teams, Zoom and Meet see a normal microphone. Your phone audio already
+      plays on this PC; this is what makes it an input.
+    </p>
+    <div class="row" style="margin-top:16px">
+      <button class="primary" id="micdownload">Download VB-CABLE</button>
+      <button class="ghost" id="micrecheck">I already have it</button>
+    </div>
   </div>
 </div>
 
@@ -1182,6 +1204,7 @@ checkUpdates(false);
 
 /* ---- phone microphone ------------------------------------------------- */
 let audMuted = false;
+let audCable = '';
 
 function audEl(id){ return document.getElementById(id); }
 
@@ -1211,6 +1234,28 @@ function renderAudio(r){
     sel.value = wanted;
   }
   if(r.error) stat.textContent = 'error';
+
+  // A microphone in Windows means a driver endpoint; detect a virtual cable so
+  // routing the phone into it is one click.
+  const cable = names.find(n => /cable input|vb-audio|voicemeeter|virtual audio|virtual cable/i.test(n));
+  audCable = cable || '';
+  audEl('audmic').hidden = !cable;
+  if(cable){
+    const modal = audEl('micModal');
+    if(modal) modal.classList.remove('show');
+  }else if(r.needs_virtual_mic && r.live && sessionStorage.getItem('micPrompt') !== 'off'){
+    const modal = audEl('micModal');
+    if(modal) modal.classList.add('show');
+  }
+  if(cable){
+    audEl('audhint').innerHTML =
+      `Virtual microphone detected: <b>${cable.replace(/</g, '&lt;')}</b> — use it above and call apps will list the phone as a microphone.`;
+  }else{
+    audEl('audhint').innerHTML =
+      'Windows lists microphones from audio drivers. To use the phone as a mic in call apps, install a ' +
+      '<a href="https://vb-audio.com/Cable/" target="_blank">virtual cable</a> and pick its input above.' +
+      ' For now the phone audio plays on the selected output.';
+  }
 }
 
 async function refreshAudio(){
@@ -1231,7 +1276,14 @@ audEl('auddevice').onchange = (e) => setAudio({ device: e.target.value });
 audEl('audvol').onchange = (e) => setAudio({ volume: Number(e.target.value) / 100 });
 audEl('audvol').oninput = (e) => { audEl('audbar').style.width = e.target.value + '%'; };
 audEl('audmute').onclick = () => setAudio({ muted: !audMuted });
+audEl('audmic').onclick = () => setAudio({ device: audCable, muted: false, enabled: true });
 audEl('audenabled').onchange = (e) => setAudio({ enabled: e.target.checked });
+audEl('micdownload').onclick = () => window.open('https://vb-audio.com/Cable/', '_blank');
+audEl('micrecheck').onclick = () => { refreshAudio(); };
+audEl('miclater').onclick = () => {
+  sessionStorage.setItem('micPrompt', 'off');
+  audEl('micModal').classList.remove('show');
+};
 audEl('audgate').onchange = (e) => setAudio({ gate: e.target.checked });
 refreshAudio();
 setInterval(refreshAudio, 1500);
