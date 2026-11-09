@@ -138,8 +138,6 @@
   .updatebar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
   .updatebar .hint{margin:0}
   .updbeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
-  .audselect{background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.14);color:var(--ink);
-    border-radius:10px;padding:6px 8px;font-size:12px;max-width:230px;outline:none}
   .audmeter{width:64px;height:6px;border-radius:99px;background:rgba(var(--tint),.09);
     overflow:hidden;display:inline-block}
   .audmeter>i{display:block;height:100%;width:0;background:#5BE49B;transition:width .12s linear}
@@ -324,11 +322,9 @@
     <span class="audmeter"><i id="audbar"></i></span>
     <span class="hint" id="audstat" style="margin:0">idle</span>
     <div class="spacer"></div>
-    <select id="auddevice" class="audselect"></select>
+    <span class="hint" id="audroute" style="margin:0">-&gt; DeskGadget Audio Interface</span>
     <input id="audvol" type="range" min="0" max="100" value="90" style="width:110px" />
-    <button class="primary" id="audmic" hidden>Use as mic</button>
     <button class="ghost" id="audmute">Mute</button>
-    <label class="updbeta"><input type="checkbox" id="audmonitor" checked /> Monitor</label>
     <label class="updbeta"><input type="checkbox" id="audgate" checked /> Gate</label>
     <label class="updbeta"><input type="checkbox" id="audenabled" checked /> On</label>
   </div>
@@ -1208,16 +1204,8 @@ checkUpdates(false);
 
 /* ---- phone microphone ------------------------------------------------- */
 let audMuted = false;
-let audCable = '';
 
 function audEl(id){ return document.getElementById(id); }
-
-function cableLabel(name){
-  if(/cable (input|output)|vb-audio/i.test(name) && !/16ch|point/i.test(name)){
-    return 'DeskGadget Audio Interface';
-  }
-  return name.replace(/</g, '&lt;');
-}
 
 function cableScore(name){
   let score = 0;
@@ -1238,48 +1226,33 @@ function renderAudio(r){
   audEl('audmute').textContent = audMuted ? 'Unmute' : 'Mute';
   audEl('audenabled').checked = !!r.enabled;
   audEl('audgate').checked = !!r.gate;
-  audEl('audmonitor').checked = r.monitor !== false;
 
   const vol = audEl('audvol');
   if(document.activeElement !== vol) vol.value = Math.round((r.volume || 0) * 100);
 
-  const sel = audEl('auddevice');
   const names = (r.devices || []).map(d => d.name);
-  const wanted = r.device || '';
-  const signature = names.join('|') + '#' + wanted;
-  if(sel.dataset.sig !== signature){
-    sel.dataset.sig = signature;
-    sel.innerHTML = '<option value="">System default</option>' + names
-      .map(n => `<option value="${n.replace(/"/g, '&quot;')}">${cableLabel(n)}</option>`)
-      .join('');
-    sel.value = wanted;
-  }
+  const cable = names
+    .filter(n => /cable input|vb-audio|voicemeeter|virtual cable/i.test(n))
+    .sort((a, b) => cableScore(b) - cableScore(a))[0] || '';
+
+  const route = audEl('audroute');
+  if(route) route.textContent = cable ? '→ DeskGadget Audio Interface' : '→ VB-CABLE missing';
   if(r.error) stat.textContent = 'error';
 
-  // A microphone in Windows means a driver endpoint; detect a virtual cable so
-  // routing the phone into it is one click.
-  const cable = names
-    .filter(n => /cable input|vb-audio|voicemeeter|virtual audio|virtual cable/i.test(n))
-    .sort((a, b) => cableScore(b) - cableScore(a))[0];
-  audCable = cable || '';
-  audEl('audmic').hidden = !cable;
+  const modal = audEl('micModal');
   if(cable){
-    const modal = audEl('micModal');
     if(modal) modal.classList.remove('show');
-  }else if(r.needs_virtual_mic && r.live && sessionStorage.getItem('micPrompt') !== 'off'){
-    const modal = audEl('micModal');
-    if(modal) modal.classList.add('show');
-  }
-  if(cable){
     audEl('audhint').innerHTML =
-      `Virtual microphone detected: <b>${cable.replace(/</g, '&lt;')}</b> — ` +
-      'rename it to <b>DeskGadget Audio Interface</b> in Settings → Sound (Windows allows ' +
-      'renaming endpoints there), then pick it in call apps.';
+      'Phone audio is routed into <b>VB-CABLE</b> automatically. ' +
+      'In Teams, Zoom or Meet, pick <b>CABLE Output</b> as the microphone.';
   }else{
+    if(r.needs_virtual_mic && r.live && sessionStorage.getItem('micPrompt') !== 'off' && modal){
+      modal.classList.add('show');
+    }
     audEl('audhint').innerHTML =
-      'Windows lists microphones from audio drivers. To use the phone as a mic in call apps, install a ' +
-      '<a href="https://vb-audio.com/Cable/" target="_blank">virtual cable</a> and pick its input above.' +
-      ' For now the phone audio plays on the selected output.';
+      'Phone audio needs <b>VB-CABLE</b> to appear as a microphone. ' +
+      '<a href="https://vb-audio.com/Cable/" target="_blank">Install it</a>, ' +
+      'then DeskGadget picks it up automatically.';
   }
 }
 
@@ -1297,13 +1270,10 @@ async function setAudio(body){
   }catch(e){}
 }
 
-audEl('auddevice').onchange = (e) => setAudio({ device: e.target.value });
 audEl('audvol').onchange = (e) => setAudio({ volume: Number(e.target.value) / 100 });
 audEl('audvol').oninput = (e) => { audEl('audbar').style.width = e.target.value + '%'; };
 audEl('audmute').onclick = () => setAudio({ muted: !audMuted });
-audEl('audmic').onclick = () => setAudio({ device: audCable, muted: false, enabled: true });
 audEl('audenabled').onchange = (e) => setAudio({ enabled: e.target.checked });
-audEl('audmonitor').onchange = (e) => setAudio({ monitor: e.target.checked });
 audEl('micdownload').onclick = () => window.open('https://vb-audio.com/Cable/', '_blank');
 audEl('micrecheck').onclick = async () => {
   try { await api('/api/camera/audio/rescan', {}); } catch(e) {}

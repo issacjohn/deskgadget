@@ -61,7 +61,13 @@ store = Store()
 hub = Hub(store, {}, store.data.get("server_name", "DeskGadget"), PORT)
 hub.version = updates.current_version()
 audio_sink = AudioSink()
-audio_sink.state.update(store.data.get("audio", {}))
+audio_sink.state.update(
+    {
+        key: value
+        for key, value in store.data.get("audio", {}).items()
+        if key in {"enabled", "volume", "muted", "gate"}
+    }
+)
 discovery = Discovery(PORT, hub.server_name)
 beacon = Beacon(PORT, hub.server_name)
 adb = AdbBridge(PORT)
@@ -1106,7 +1112,9 @@ async def ws_mic(ws: WebSocket):
         log.debug("microphone websocket closed", exc_info=True)
 
 
-CABLE_RE = re.compile(r"cable input|vb-audio|voicemeeter|virtual", re.IGNORECASE)
+CABLE_RE = re.compile(
+    r"cable input|vb-audio|voicemeeter|virtual cable", re.IGNORECASE
+)
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
 _mic_prompt = {"asked": False}
 _mic_prompt_lock = threading.Lock()
@@ -1157,7 +1165,7 @@ def _offer_virtual_mic() -> None:
                 None,
                 "Use the phone as a microphone in Teams, Zoom or Discord?\n\n"
                 "Windows needs a virtual audio device for that. Install VB-CABLE (free), "
-                "then choose it in the Phone Audio bar.\n\n"
+                "then DeskGadget picks it up automatically.\n\n"
                 "Open the download page now?",
                 "DeskGadget",
                 0x00000004 | 0x00000040 | 0x00040000,  # YESNO | INFO | TOPMOST
@@ -1191,15 +1199,15 @@ async def api_camera_audio_set(request: Request):
     body = body or {}
     audio_sink.configure(
         enabled=body.get("enabled"),
-        device=body.get("device"),
         volume=body.get("volume"),
         muted=body.get("muted"),
         gate=body.get("gate"),
-        monitor=body.get("monitor"),
     )
     # remember the choice across restarts
     saved = store.data.setdefault("audio", {})
-    for key in ("enabled", "device", "volume", "muted", "gate", "monitor"):
+    saved.pop("device", None)
+    saved.pop("monitor", None)
+    for key in ("enabled", "volume", "muted", "gate"):
         if key in body:
             saved[key] = audio_sink.state.get(key)
     try:

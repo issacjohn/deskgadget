@@ -25,7 +25,6 @@ class AudioSink:
     def __init__(self) -> None:
         self._q: queue.Queue[bytes] = queue.Queue(maxsize=150)
         self._stream = None
-        self._monitor = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -39,9 +38,7 @@ class AudioSink:
             "volume": 0.9,
             "muted": False,
             "gate": True,
-            "monitor": True,
             "error": "",
-            "monitor_error": "",
         }
 
     # -- lifecycle ---------------------------------------------------------
@@ -68,34 +65,6 @@ class AudioSink:
                 stream.close()
             except Exception:
                 pass
-        self._close_monitor()
-
-    def _close_monitor(self) -> None:
-        with self._lock:
-            stream, self._monitor = self._monitor, None
-        if stream is not None:
-            try:
-                stream.stop()
-                stream.close()
-            except Exception:
-                pass
-
-    def _ensure_monitor(self) -> None:
-        """Hear the phone on the default output while a cable gets the mic feed."""
-        if self._monitor is not None:
-            return
-        with self._lock:
-            if self._monitor is not None:
-                return
-            self._monitor = sd.RawOutputStream(
-                samplerate=RATE,
-                channels=1,
-                dtype="int16",
-                device=None,  # system default
-                blocksize=BLOCK,
-                latency="low",
-            )
-            self._monitor.start()
 
     # -- devices -----------------------------------------------------------
     def devices(self) -> list[dict]:
@@ -127,17 +96,32 @@ class AudioSink:
             self.state["error"] = str(exc)
         return out
 
-    def _device_index(self) -> int | None:
-        name = str(self.state.get("device") or "").strip()
-        if not name:
-            return None  # system default
-        want = name[:31].strip().lower()
+    def _cable(self) -> dict | None:
+        """The VB-CABLE render side, chosen automatically. No other device."""
+        best: dict | None = None
+        best_score = 0
         for device in self.devices():
-            have = str(device["name"])[:31].strip().lower()
-            if have == want:
-                return int(device["index"])
-        # never silently play on the default output when a device was chosen
-        raise RuntimeError(f"Output device not found: {name}")
+            name = str(device.get("name", "")).lower()
+            if "cable input" in name:
+                score = 3
+            elif "vb-audio" in name or "virtual cable" in name:
+                score = 2
+            elif "voicemeeter" in name or "virtual cable" in name:
+                score = 1
+            else:
+                continue
+            if score > best_score:
+                best, best_score = device, score
+        return best
+
+    def _device_index(self) -> int:
+        cable = self._cable()
+        if cable is None:
+            raise RuntimeError(
+                "Virtual audio cable not found. Install VB-CABLE to use the phone as a microphone."
+            )
+        self.state["device"] = str(cable["name"])
+        return int(cable["index"])
 
     # -- audio path --------------------------------------------------------
     def _ensure_stream(self) -> None:
@@ -157,7 +141,7 @@ class AudioSink:
             )
             self._stream.start()
             try:
-                self.state["actual"] = str(sd.query_devices(index)["name"]) if index is not None else "System default"
+                self.state["actual"] = str(sd.query_devices(index)["name"])
             except Exception:
                 self.state["actual"] = ""
 
@@ -193,21 +177,12 @@ class AudioSink:
                     samples = samples * volume * gain
                     out = np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
                 self._stream.write(out)
-                # a virtual cable is silent by nature; mirror it to the default
-                # output so the user still hears the phone
-                if self.state.get("monitor") and self.state.get("device"):
-                    try:
-                        self._ensure_monitor()
-                        self._monitor.write(out)
-                        self.state["monitor_error"] = ""
-                    except Exception as exc:
-                        self.state["monitor_error"] = str(exc)
-                        self._close_monitor()
                 self.state["error"] = ""
             except Exception as exc:
                 self.state["error"] = str(exc)
                 self._close_stream()
-                self._stop.wait(1.5)
+                missing = "Virtual audio cable not found" in str(exc)
+                self._stop.wait(5.0 if missing else 1.5)
 
     def push(self, data: bytes) -> None:
         """Called for every PCM chunk from the phone."""
@@ -251,27 +226,18 @@ class AudioSink:
         self,
         *,
         enabled: bool | None = None,
-        device: str | None = None,
         volume: float | None = None,
         muted: bool | None = None,
         gate: bool | None = None,
-        monitor: bool | None = None,
     ) -> dict:
         if enabled is not None:
             self.state["enabled"] = bool(enabled)
-        if device is not None:
-            self.state["device"] = str(device)
-            self._close_stream()  # reopen on the next chunk
         if volume is not None:
             self.state["volume"] = max(0.0, min(1.0, float(volume)))
         if muted is not None:
             self.state["muted"] = bool(muted)
         if gate is not None:
             self.state["gate"] = bool(gate)
-        if monitor is not None:
-            self.state["monitor"] = bool(monitor)
-            if not self.state["monitor"]:
-                self._close_monitor()
         return self.snapshot()
 
     def snapshot(self) -> dict:
@@ -279,7 +245,6 @@ class AudioSink:
         return {
             **self.state,
             "playing": self._stream is not None,
-            "monitor_playing": self._monitor is not None,
             "live": live,
             "level": round(min(1.0, self._level), 3),
             "frames": self._frames,
