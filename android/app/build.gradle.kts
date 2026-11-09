@@ -13,8 +13,8 @@ android {
         applicationId = "com.deskgadget.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.3.10-beta.2"
+        versionCode = 22
+        versionName = "1.3.10-beta.3"
     }
 
     buildTypes {
