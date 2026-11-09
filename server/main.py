@@ -61,6 +61,7 @@ store = Store()
 hub = Hub(store, {}, store.data.get("server_name", "DeskGadget"), PORT)
 hub.version = updates.current_version()
 audio_sink = AudioSink()
+audio_sink.state.update(store.data.get("audio", {}))
 discovery = Discovery(PORT, hub.server_name)
 beacon = Beacon(PORT, hub.server_name)
 adb = AdbBridge(PORT)
@@ -1169,6 +1170,13 @@ def _offer_virtual_mic() -> None:
     threading.Thread(target=run, name="mic-prompt", daemon=True).start()
 
 
+@app.post("/api/camera/audio/rescan")
+async def api_camera_audio_rescan():
+    """Pick up a virtual cable installed while the app was running."""
+    await asyncio.to_thread(audio_sink.rescan)
+    return _audio_payload()
+
+
 @app.get("/api/camera/audio")
 async def api_camera_audio():
     return _audio_payload()
@@ -1188,6 +1196,15 @@ async def api_camera_audio_set(request: Request):
         muted=body.get("muted"),
         gate=body.get("gate"),
     )
+    # remember the choice across restarts
+    saved = store.data.setdefault("audio", {})
+    for key in ("enabled", "device", "volume", "muted", "gate"):
+        if key in body:
+            saved[key] = audio_sink.state.get(key)
+    try:
+        store.save()
+    except Exception:
+        log.debug("could not save audio settings", exc_info=True)
     return _audio_payload()
 
 

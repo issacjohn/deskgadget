@@ -1279,7 +1279,10 @@ audEl('audmute').onclick = () => setAudio({ muted: !audMuted });
 audEl('audmic').onclick = () => setAudio({ device: audCable, muted: false, enabled: true });
 audEl('audenabled').onchange = (e) => setAudio({ enabled: e.target.checked });
 audEl('micdownload').onclick = () => window.open('https://vb-audio.com/Cable/', '_blank');
-audEl('micrecheck').onclick = () => { refreshAudio(); };
+audEl('micrecheck').onclick = async () => {
+  try { await api('/api/camera/audio/rescan', {}); } catch(e) {}
+  refreshAudio();
+};
 audEl('miclater').onclick = () => {
   sessionStorage.setItem('micPrompt', 'off');
   audEl('micModal').classList.remove('show');

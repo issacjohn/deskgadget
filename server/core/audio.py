@@ -77,9 +77,10 @@ class AudioSink:
                 if int(device.get("max_output_channels", 0)) <= 0:
                     continue
                 name = str(device.get("name", "")).strip()
-                if not name or name in seen:
+                key = name[:31].strip()  # MME truncates names; collapse duplicates
+                if not name or key in seen:
                     continue  # PortAudio lists the same device per host API
-                seen.add(name)
+                seen.add(key)
                 out.append(
                     {
                         "index": index,
@@ -183,6 +184,17 @@ class AudioSink:
                 pass
 
     # -- api ---------------------------------------------------------------
+    def rescan(self) -> list[dict]:
+        """Re-enumerate devices, e.g. after the user installs a virtual cable."""
+        self._close_stream()
+        if sd is not None:
+            try:
+                sd._terminate()
+                sd._initialize()
+            except Exception:
+                pass
+        return self.devices()
+
     def configure(
         self,
         *,
