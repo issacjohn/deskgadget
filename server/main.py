@@ -1195,10 +1195,11 @@ async def api_camera_audio_set(request: Request):
         volume=body.get("volume"),
         muted=body.get("muted"),
         gate=body.get("gate"),
+        monitor=body.get("monitor"),
     )
     # remember the choice across restarts
     saved = store.data.setdefault("audio", {})
-    for key in ("enabled", "device", "volume", "muted", "gate"):
+    for key in ("enabled", "device", "volume", "muted", "gate", "monitor"):
         if key in body:
             saved[key] = audio_sink.state.get(key)
     try:

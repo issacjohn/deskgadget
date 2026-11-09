@@ -25,6 +25,7 @@ class AudioSink:
     def __init__(self) -> None:
         self._q: queue.Queue[bytes] = queue.Queue(maxsize=150)
         self._stream = None
+        self._monitor = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -38,7 +39,9 @@ class AudioSink:
             "volume": 0.9,
             "muted": False,
             "gate": True,
+            "monitor": True,
             "error": "",
+            "monitor_error": "",
         }
 
     # -- lifecycle ---------------------------------------------------------
@@ -65,6 +68,34 @@ class AudioSink:
                 stream.close()
             except Exception:
                 pass
+        self._close_monitor()
+
+    def _close_monitor(self) -> None:
+        with self._lock:
+            stream, self._monitor = self._monitor, None
+        if stream is not None:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+
+    def _ensure_monitor(self) -> None:
+        """Hear the phone on the default output while a cable gets the mic feed."""
+        if self._monitor is not None:
+            return
+        with self._lock:
+            if self._monitor is not None:
+                return
+            self._monitor = sd.RawOutputStream(
+                samplerate=RATE,
+                channels=1,
+                dtype="int16",
+                device=None,  # system default
+                blocksize=BLOCK,
+                latency="low",
+            )
+            self._monitor.start()
 
     # -- devices -----------------------------------------------------------
     def devices(self) -> list[dict]:
@@ -151,6 +182,16 @@ class AudioSink:
                     samples = samples * volume * gain
                     out = np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
                 self._stream.write(out)
+                # a virtual cable is silent by nature; mirror it to the default
+                # output so the user still hears the phone
+                if self.state.get("monitor") and self.state.get("device"):
+                    try:
+                        self._ensure_monitor()
+                        self._monitor.write(out)
+                        self.state["monitor_error"] = ""
+                    except Exception as exc:
+                        self.state["monitor_error"] = str(exc)
+                        self._close_monitor()
                 self.state["error"] = ""
             except Exception as exc:
                 self.state["error"] = str(exc)
@@ -203,6 +244,7 @@ class AudioSink:
         volume: float | None = None,
         muted: bool | None = None,
         gate: bool | None = None,
+        monitor: bool | None = None,
     ) -> dict:
         if enabled is not None:
             self.state["enabled"] = bool(enabled)
@@ -215,6 +257,10 @@ class AudioSink:
             self.state["muted"] = bool(muted)
         if gate is not None:
             self.state["gate"] = bool(gate)
+        if monitor is not None:
+            self.state["monitor"] = bool(monitor)
+            if not self.state["monitor"]:
+                self._close_monitor()
         return self.snapshot()
 
     def snapshot(self) -> dict:
@@ -222,6 +268,7 @@ class AudioSink:
         return {
             **self.state,
             "playing": self._stream is not None,
+            "monitor_playing": self._monitor is not None,
             "live": live,
             "level": round(min(1.0, self._level), 3),
             "frames": self._frames,

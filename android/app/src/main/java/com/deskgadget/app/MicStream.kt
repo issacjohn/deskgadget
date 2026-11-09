@@ -6,10 +6,9 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.os.SystemClock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response as HttpCallResponse
@@ -126,7 +125,7 @@ class MicStream(endpoint: String) {
         }
         val recorder = runCatching {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 rate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -146,24 +145,22 @@ class MicStream(endpoint: String) {
             return
         }
 
-        // Keep the room out of the call: the platform echo canceller and noise
-        // suppressor are on by default (and quietly skipped when unsupported).
+        // Keep the room out of the call: the platform noise suppressor is on by
+        // default (echo cancellation mutes too much on some phones).
         val session = recorder.audioSessionId
         val noise = runCatching {
             if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(session) else null
         }.getOrNull()
-        val echo = runCatching {
-            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(session) else null
-        }.getOrNull()
-        val gain = runCatching {
-            if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(session) else null
-        }.getOrNull()
         runCatching { noise?.enabled = true }
-        runCatching { echo?.enabled = true }
-        runCatching { gain?.enabled = true }
 
         val buffer = ByteArray(chunkBytes)
+        var lastConnect = 0L
         while (running.get()) {
+            // the PC may restart while the camera page stays open
+            if (socket == null && SystemClock.elapsedRealtime() - lastConnect > 1500) {
+                lastConnect = SystemClock.elapsedRealtime()
+                connect()
+            }
             val read = recorder.read(buffer, 0, buffer.size)
             if (read <= 0) continue
 
@@ -182,8 +179,6 @@ class MicStream(endpoint: String) {
             if (ws.send(ByteString.of(*buffer.copyOf(read)))) sent.incrementAndGet()
         }
 
-        runCatching { gain?.release() }
-        runCatching { echo?.release() }
         runCatching { noise?.release() }
         runCatching { recorder.stop() }
         runCatching { recorder.release() }

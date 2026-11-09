@@ -328,7 +328,8 @@
     <input id="audvol" type="range" min="0" max="100" value="90" style="width:110px" />
     <button class="primary" id="audmic" hidden>Use as mic</button>
     <button class="ghost" id="audmute">Mute</button>
-    <label class="updbeta"><input type="checkbox" id="audgate" checked /> Noise gate</label>
+    <label class="updbeta"><input type="checkbox" id="audmonitor" checked /> Monitor</label>
+    <label class="updbeta"><input type="checkbox" id="audgate" checked /> Gate</label>
     <label class="updbeta"><input type="checkbox" id="audenabled" checked /> On</label>
   </div>
   <p class="hint" id="audhint" style="margin:8px 4px 0"></p>
@@ -1218,6 +1219,7 @@ function renderAudio(r){
   audEl('audmute').textContent = audMuted ? 'Unmute' : 'Mute';
   audEl('audenabled').checked = !!r.enabled;
   audEl('audgate').checked = !!r.gate;
+  audEl('audmonitor').checked = r.monitor !== false;
 
   const vol = audEl('audvol');
   if(document.activeElement !== vol) vol.value = Math.round((r.volume || 0) * 100);
@@ -1278,6 +1280,7 @@ audEl('audvol').oninput = (e) => { audEl('audbar').style.width = e.target.value 
 audEl('audmute').onclick = () => setAudio({ muted: !audMuted });
 audEl('audmic').onclick = () => setAudio({ device: audCable, muted: false, enabled: true });
 audEl('audenabled').onchange = (e) => setAudio({ enabled: e.target.checked });
+audEl('audmonitor').onchange = (e) => setAudio({ monitor: e.target.checked });
 audEl('micdownload').onclick = () => window.open('https://vb-audio.com/Cable/', '_blank');
 audEl('micrecheck').onclick = async () => {
   try { await api('/api/camera/audio/rescan', {}); } catch(e) {}
