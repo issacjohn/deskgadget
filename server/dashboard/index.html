@@ -1209,6 +1209,15 @@ let audCable = '';
 
 function audEl(id){ return document.getElementById(id); }
 
+function cableScore(name){
+  let score = 0;
+  if(/^cable input/i.test(name)) score += 10;
+  if(/16ch/i.test(name)) score -= 6;
+  if(/virtual cable/i.test(name)) score += 2;
+  if(/point/i.test(name)) score -= 3;
+  return score;
+}
+
 function renderAudio(r){
   audMuted = !!r.muted;
   const stat = audEl('audstat');
@@ -1239,7 +1248,9 @@ function renderAudio(r){
 
   // A microphone in Windows means a driver endpoint; detect a virtual cable so
   // routing the phone into it is one click.
-  const cable = names.find(n => /cable input|vb-audio|voicemeeter|virtual audio|virtual cable/i.test(n));
+  const cable = names
+    .filter(n => /cable input|vb-audio|voicemeeter|virtual audio|virtual cable/i.test(n))
+    .sort((a, b) => cableScore(b) - cableScore(a))[0];
   audCable = cable || '';
   audEl('audmic').hidden = !cable;
   if(cable){

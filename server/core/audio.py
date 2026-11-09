@@ -128,15 +128,19 @@ class AudioSink:
         name = str(self.state.get("device") or "").strip()
         if not name:
             return None  # system default
+        want = name[:31].strip().lower()
         for device in self.devices():
-            if device["name"] == name:
+            have = str(device["name"])[:31].strip().lower()
+            if have == want:
                 return int(device["index"])
-        return None
+        # never silently play on the default output when a device was chosen
+        raise RuntimeError(f"Output device not found: {name}")
 
     # -- audio path --------------------------------------------------------
     def _ensure_stream(self) -> None:
         if self._stream is not None:
             return
+        index = self._device_index()
         with self._lock:
             if self._stream is not None:
                 return
@@ -144,11 +148,15 @@ class AudioSink:
                 samplerate=RATE,
                 channels=1,
                 dtype="int16",
-                device=self._device_index(),
+                device=index,
                 blocksize=BLOCK,
                 latency="low",
             )
             self._stream.start()
+            try:
+                self.state["actual"] = str(sd.query_devices(index)["name"]) if index is not None else "System default"
+            except Exception:
+                self.state["actual"] = ""
 
     def _loop(self) -> None:
         while not self._stop.is_set():
