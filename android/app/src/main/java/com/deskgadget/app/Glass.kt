@@ -1,8 +1,11 @@
 package com.deskgadget.app
 
+import android.content.Context
 import android.graphics.RenderEffect
 import android.graphics.Shader
+import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -39,8 +42,13 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -98,6 +106,21 @@ val LocalPalette = staticCompositionLocalOf { LiquidPalette }
 /** True when the window is wider than it is tall, so cards tighten their padding. */
 val LocalCompactLayout = staticCompositionLocalOf { false }
 
+/** Battery saver, a low battery or a warm phone: draw the backdrop once. */
+private fun shouldThrottleBackdrop(context: Context): Boolean {
+    val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    if (power?.isPowerSaveMode == true) return true
+    val battery = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+    val level = battery?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+    if (level in 1..20) return true
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if ((power?.currentThermalStatus ?: 0) >= PowerManager.THERMAL_STATUS_MODERATE) {
+            return true
+        }
+    }
+    return false
+}
+
 /** Full-screen animated backdrop. Wrap the whole app in this. */
 @Composable
 fun LiquidBackdrop(
@@ -106,12 +129,27 @@ fun LiquidBackdrop(
 ) {
     val time = remember { mutableFloatStateOf(0f) }
     var size by remember { mutableStateOf(IntSize.Zero) }
+    val context = LocalContext.current
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val resumed = lifecycleState == Lifecycle.State.RESUMED
+    var throttled by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // A hot or nearly empty phone should not spend power on a decoration.
+    LaunchedEffect(resumed) {
+        while (resumed) {
+            throttled = shouldThrottleBackdrop(context)
+            delay(20_000)
+        }
+    }
+
+    // 20fps is plenty for the slow blobs; it also halves the GPU cost of the
+    // full-screen canvas compared with 30fps.
+    LaunchedEffect(resumed, throttled) {
+        if (!resumed || throttled) return@LaunchedEffect
         var last = 0L
         while (true) {
             withInfiniteAnimationFrameNanos { now ->
-                if (now - last > 33_000_000L) { // ~30fps is plenty for slow blobs
+                if (now - last > 50_000_000L) {
                     time.floatValue = now / 1_000_000_000f
                     last = now
                 }

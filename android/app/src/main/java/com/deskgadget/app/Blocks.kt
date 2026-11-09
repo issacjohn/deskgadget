@@ -2006,6 +2006,7 @@ private fun CameraCard(
 
     var lens by rememberSaveable { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     var live by remember { mutableStateOf(false) }
+    var previewPaused by remember { mutableStateOf(false) }
     val liveRef = remember { AtomicBoolean(false) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
@@ -2067,9 +2068,21 @@ private fun CameraCard(
         }
     }
 
-    LaunchedEffect(granted, lens, previewView, resolutionIndex, retry) {
+    // A phone left on this screen should not keep the sensor and preview hot.
+    LaunchedEffect(live, previewPaused) {
+        if (live || previewPaused) return@LaunchedEffect
+        delay(60_000)
+        previewPaused = true
+    }
+
+    LaunchedEffect(granted, lens, previewView, resolutionIndex, retry, previewPaused) {
         val view = previewView ?: return@LaunchedEffect
         if (!granted) return@LaunchedEffect
+        if (previewPaused) {
+            runCatching { provider?.unbindAll() }
+            cameraRef = null
+            return@LaunchedEffect
+        }
         val camera = runCatching { awaitCameraProvider(context) }.getOrNull()
         if (camera == null) {
             error = "Camera unavailable"
@@ -2201,6 +2214,38 @@ private fun CameraCard(
                                 fontSize = 11.5.sp,
                                 textAlign = TextAlign.Center,
                             )
+                        }
+                    }
+
+                    if (previewPaused && !live) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color(0xF205070C))
+                                .clickable { previewPaused = false },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Rounded.PowerSettingsNew,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7CE7FF),
+                                    modifier = Modifier.size(26.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Preview paused to keep the phone cool",
+                                    color = Ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    "Tap to resume",
+                                    color = Muted,
+                                    fontSize = 11.sp,
+                                )
+                            }
                         }
                     }
 
@@ -2392,6 +2437,7 @@ private fun CameraCard(
                                 live = !live
                                 liveRef.set(live)
                                 if (live) {
+                                    previewPaused = false
                                     stream.start()
                                 } else {
                                     stream.stop()
@@ -2413,6 +2459,7 @@ private fun CameraCard(
                                 live = !live
                                 liveRef.set(live)
                                 if (live) {
+                                    previewPaused = false
                                     stream.start()
                                 } else {
                                     stream.stop()
@@ -2453,15 +2500,22 @@ private fun CameraBadge(
     granted: Boolean,
     modifier: Modifier,
 ) {
-    val pulse by rememberInfiniteTransition(label = "live-dot").animateFloat(
-        initialValue = 1f,
-        targetValue = 0.45f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "live-dot-alpha",
-    )
+    // Only a LIVE badge pulses; a READY one should not keep the GPU awake.
+    val pulse = if (live) {
+        val transition = rememberInfiniteTransition(label = "live-dot")
+        val value by transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.45f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "live-dot-alpha",
+        )
+        value
+    } else {
+        1f
+    }
     val (text, tint) = when {
         !granted -> "NO ACCESS" to Color(0xFFFFC96B)
         live -> ("LIVE" + (if (fps > 0) " · $fps FPS" else "")) to Color(0xFF5BE49B)
@@ -2479,7 +2533,7 @@ private fun CameraBadge(
             Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(tint.copy(alpha = if (live) pulse else 1f))
+                .background(tint.copy(alpha = pulse))
         )
         Spacer(Modifier.width(6.dp))
         Text(
