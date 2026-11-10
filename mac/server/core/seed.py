@@ -87,15 +87,23 @@ def ensure(force: bool = False) -> None:
     plugins_root.mkdir(parents=True, exist_ok=True)
     removed_root = data / "plugins_removed"
     bundled = bundle / "plugins"
+    refresh_modules = force or fresh or current != version
     if bundled.is_dir():
         for source in sorted(bundled.iterdir()):
             if not source.is_dir() or source.name in _IGNORE:
                 continue
-            target = plugins_root / source.name
-            if target.exists() or (removed_root / source.name).exists():
+            if (removed_root / source.name).exists():
                 continue
+            target = plugins_root / source.name
+            if target.exists() and not refresh_modules:
+                continue
+            existed = target.exists()
             _copy_tree(source, target)
-            log.info("installed bundled module: %s", source.name)
+            log.info(
+                "%s bundled module: %s",
+                "updated" if existed else "installed",
+                source.name,
+            )
 
     try:
         marker.write_text(version, encoding="utf-8")
