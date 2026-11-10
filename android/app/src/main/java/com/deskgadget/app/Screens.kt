@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -816,14 +817,18 @@ fun DeckScreen(
         }
 
         Row(Modifier.fillMaxSize()) {
-            ModuleRail(
-                pages = pages,
-                pager = pager,
-                offset = homeOffset,
-                hasHome = hasHome,
-                compact = compact,
-                onSelect = select,
-            )
+            // Phones get a bottom dock (the width is the abundant axis in
+            // landscape); tablets get the labelled rail.
+            if (!compact) {
+                ModuleRail(
+                    pages = pages,
+                    pager = pager,
+                    offset = homeOffset,
+                    hasHome = hasHome,
+                    compact = false,
+                    onSelect = select,
+                )
+            }
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 DeckTopBar(
                     state = state,
@@ -880,6 +885,15 @@ fun DeckScreen(
                     }
                 }
             }
+                if (compact && pages.isNotEmpty()) {
+                    ModuleDock(
+                        pages = pages,
+                        pager = pager,
+                        offset = homeOffset,
+                        hasHome = hasHome,
+                        onSelect = select,
+                    )
+                }
             }
         }
 
@@ -1330,25 +1344,129 @@ private fun ModuleRail(
             )
             Spacer(Modifier.height(4.dp))
         }
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+        val listState = rememberLazyListState()
+        // Keep the module you swiped to visible, even when the rail scrolls.
+        LaunchedEffect(activeIndex) {
+            if (pages.isNotEmpty()) {
+                listState.animateScrollToItem(activeIndex.coerceIn(0, pages.size - 1))
+            }
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            pages.forEachIndexed { index, page ->
+            items(count = pages.size) { index ->
                 RailItem(
-                    icon = iconForModule(page.id),
-                    label = page.title,
+                    icon = iconForModule(pages[index].id),
+                    label = pages[index].title,
                     active = activeIndex == index,
                     compact = compact,
-                    accent = hexColor(page.accent),
+                    accent = hexColor(pages[index].accent),
                     onClick = { onSelect(index + offset) },
                 )
             }
         }
+    }
+}
+
+/** Phone landscape: a bottom dock uses the width and keeps every label. */
+@Composable
+private fun ModuleDock(
+    pages: List<PageData>,
+    pager: PagerState,
+    offset: Int,
+    hasHome: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    val palette = LocalPalette.current
+    val shape = RoundedCornerShape(20.dp)
+    val activeIndex = if (hasHome && pager.currentPage == 0) -1 else pager.currentPage - offset
+    val listState = rememberLazyListState()
+    val leading = if (hasHome) 1 else 0
+
+    LaunchedEffect(activeIndex, pages.size) {
+        val target = activeIndex + leading
+        if (target >= 0 && pages.isNotEmpty()) {
+            listState.animateScrollToItem(target.coerceAtMost(pages.size + leading - 1))
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp),
+    ) {
+        LazyRow(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(palette.glassTop, palette.glassBottom)))
+                .border(1.dp, palette.borderMid, shape)
+                .padding(horizontal = 6.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (hasHome) {
+                item {
+                    DockItem(
+                        icon = Icons.Rounded.GridView,
+                        label = "Home",
+                        active = activeIndex == -1,
+                        accent = palette.monoAccent ?: Color(0xFF7CE7FF),
+                        onClick = { onSelect(0) },
+                    )
+                }
+            }
+            items(count = pages.size) { index ->
+                DockItem(
+                    icon = iconForModule(pages[index].id),
+                    label = pages[index].title,
+                    active = activeIndex == index,
+                    accent = hexColor(pages[index].accent),
+                    onClick = { onSelect(index + offset) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    active: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .widthIn(min = 62.dp)
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) accent.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (active) accent else Faint,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            color = if (active) Ink else Muted,
+            fontSize = 8.5.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1364,7 +1482,7 @@ private fun RailItem(
     Column(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = if (compact) 50.dp else 58.dp)
+            .heightIn(min = if (compact) 48.dp else 58.dp)
             .clip(RoundedCornerShape(if (compact) 12.dp else 14.dp))
             .background(if (active) accent.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(role = Role.Tab, onClick = onClick)
@@ -1412,16 +1530,16 @@ private fun DeckTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ConnectionStatus(state)
-        if (!compact && title.isNotBlank()) {
+        if (title.isNotBlank()) {
             Spacer(Modifier.width(12.dp))
             Text(
                 title.uppercase(),
                 color = Faint,
-                fontSize = 9.5.sp,
+                fontSize = if (compact) 8.5.sp else 9.5.sp,
                 letterSpacing = 1.6.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 220.dp),
+                modifier = Modifier.widthIn(max = if (compact) 150.dp else 220.dp),
             )
         }
         Spacer(Modifier.weight(1f))
