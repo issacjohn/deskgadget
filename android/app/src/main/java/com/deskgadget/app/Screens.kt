@@ -817,18 +817,14 @@ fun DeckScreen(
         }
 
         Row(Modifier.fillMaxSize()) {
-            // Phones get a bottom dock (the width is the abundant axis in
-            // landscape); tablets get the labelled rail.
-            if (!compact) {
-                ModuleRail(
-                    pages = pages,
-                    pager = pager,
-                    offset = homeOffset,
-                    hasHome = hasHome,
-                    compact = false,
-                    onSelect = select,
-                )
-            }
+            ModuleRail(
+                pages = pages,
+                pager = pager,
+                offset = homeOffset,
+                hasHome = hasHome,
+                compact = compact,
+                onSelect = select,
+            )
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 DeckTopBar(
                     state = state,
@@ -885,15 +881,6 @@ fun DeckScreen(
                     }
                 }
             }
-                if (compact && pages.isNotEmpty()) {
-                    ModuleDock(
-                        pages = pages,
-                        pager = pager,
-                        offset = homeOffset,
-                        hasHome = hasHome,
-                        onSelect = select,
-                    )
-                }
             }
         }
 
@@ -1317,13 +1304,17 @@ private fun ModuleRail(
 
     Column(
         Modifier
-            .padding(start = 10.dp, top = 10.dp, bottom = 10.dp)
+            .padding(
+                start = 10.dp,
+                top = if (compact) 4.dp else 10.dp,
+                bottom = if (compact) 4.dp else 10.dp,
+            )
             .width(width)
             .fillMaxHeight()
             .clip(shape)
             .background(Brush.verticalGradient(listOf(palette.glassTop, palette.glassBottom)))
             .border(1.dp, palette.borderMid, shape)
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = if (compact) 4.dp else 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -1332,7 +1323,7 @@ private fun ModuleRail(
             tint = homeAccent.copy(alpha = 0.9f),
             modifier = Modifier.size(if (compact) 17.dp else 19.dp),
         )
-        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+        Spacer(Modifier.height(if (compact) 6.dp else 12.dp))
         if (hasHome) {
             RailItem(
                 icon = Icons.Rounded.GridView,
@@ -1355,7 +1346,7 @@ private fun ModuleRail(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 4.dp),
         ) {
             items(count = pages.size) { index ->
                 RailItem(
@@ -1482,11 +1473,11 @@ private fun RailItem(
     Column(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = if (compact) 48.dp else 58.dp)
+            .heightIn(min = if (compact) 44.dp else 58.dp)
             .clip(RoundedCornerShape(if (compact) 12.dp else 14.dp))
             .background(if (active) accent.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(role = Role.Tab, onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 7.dp),
+            .padding(horizontal = 2.dp, vertical = if (compact) 5.dp else 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -1671,10 +1662,11 @@ private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
             val count = pages.size.coerceAtLeast(1)
             // Up to four modules sit in one calm row. From five upwards the
             // grid uses two rows, which keeps the tiles from becoming slabs.
+            val maxColumns = if (roomy) 6 else 4
             val columns = if (count <= 4) {
                 count
             } else {
-                ((count + 1) / 2).coerceIn(3, 6)
+                ((count + 1) / 2).coerceIn(3, maxColumns)
             }
             val rows = ((count + columns - 1) / columns).coerceAtLeast(1)
             val gap = if (rows > 2) 7.dp else if (roomy) 12.dp else 9.dp
