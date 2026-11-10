@@ -7,6 +7,7 @@ nodes like ``/dev/disk3s1s1``.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,16 @@ from core.base import Module as BaseModule
 
 def _gb(value: float) -> float:
     return round(value / (1024 ** 3), 1)
+
+
+def _usage(mountpoint: str):
+    """Root uses the APFS Data volume; `/` alone is a tiny read-only snapshot."""
+    if mountpoint == "/" and os.path.isdir("/System/Volumes/Data"):
+        try:
+            return psutil.disk_usage("/System/Volumes/Data")
+        except Exception:
+            pass
+    return psutil.disk_usage(mountpoint)
 
 
 def _label(mountpoint: str) -> str:
@@ -45,7 +56,7 @@ class Module(BaseModule):
             if mount in seen:
                 continue
             try:
-                usage = psutil.disk_usage(mount)
+                usage = _usage(mount)
             except Exception:
                 continue
             seen.add(mount)

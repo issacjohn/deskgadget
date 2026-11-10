@@ -7,6 +7,7 @@ the permission handling is in one place.
 from __future__ import annotations
 
 import asyncio
+import os
 import platform
 import re
 import subprocess
@@ -23,6 +24,23 @@ from core.netutil import lan_ip
 
 def _gb(value: float) -> float:
     return round(value / (1024 ** 3), 1)
+
+
+def _root_usage():
+    """APFS splits `/` (read-only system) from the Data volume.
+
+    `psutil.disk_usage("/")` reports only the ~13 GB system snapshot, which
+    looks like a nearly empty disk. The Data volume reflects the container the
+    user actually fills, so prefer it for the root row and fall back on older
+    macOS versions where it does not exist.
+    """
+    data = "/System/Volumes/Data"
+    if os.path.isdir(data):
+        try:
+            return psutil.disk_usage(data)
+        except Exception:
+            pass
+    return psutil.disk_usage("/")
 
 
 def _sysctl(name: str) -> str:
@@ -133,13 +151,15 @@ class Module(BaseModule):
             self._scan_task = asyncio.create_task(self._scan_processes())
 
         mem = psutil.virtual_memory()
-        self.mem_percent = mem.percent
-        self.mem_used = _gb(mem.used)
+        # psutil's macOS `percent` includes compressed/cached pages while
+        # `used` does not, which made "8 GB used" sit next to "73%". Use
+        # total - available for both so the number and the bar agree.
+        used_bytes = max(0, mem.total - mem.available)
+        self.mem_percent = round(used_bytes / mem.total * 100, 1) if mem.total else 0.0
+        self.mem_used = _gb(used_bytes)
         self.mem_total = _gb(mem.total)
 
-        # "/" is the system volume on every macOS version; APFS reports the
-        # container's real capacity here, unlike older HFS+ special cases.
-        disk = psutil.disk_usage("/")
+        disk = _root_usage()
         self.disk_percent = disk.percent
         self.disk_free = _gb(disk.free)
         self.disk_total = _gb(disk.total)

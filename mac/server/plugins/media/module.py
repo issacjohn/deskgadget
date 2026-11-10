@@ -138,8 +138,12 @@ class Module(BaseModule):
     def page(self) -> dict:
         pct = round(self.volume * 100)
         playing = bool((self.now or {}).get("playing"))
-        blocks: list[dict] = []
         now = self.now or {}
+        has_now = bool(now.get("title"))
+        main_col = 1 if has_now else 0
+        side_col = 2 if has_now else 1
+        blocks: list[dict] = []
+
         if not media.transport_available():
             blocks.append(
                 {
@@ -147,9 +151,11 @@ class Module(BaseModule):
                     "label": "LIMITED MEDIA",
                     "text": "Volume and mute work. Grant Automation for transport, or install nowplaying-cli.",
                     "meta": "The bundled app includes a permission-free helper",
+                    "col": 0,
                 }
             )
-        if now.get("title"):
+
+        if has_now:
             blocks.append(
                 {
                     "type": "nowplaying",
@@ -161,8 +167,10 @@ class Module(BaseModule):
                     "duration": round(float(now.get("duration") or 0), 1),
                     "playing": bool(now.get("playing")),
                     "action": "seek",
+                    "col": 0,
                 }
             )
+
         blocks += [
             {
                 "type": "hero",
@@ -172,6 +180,7 @@ class Module(BaseModule):
                 "sub": self.device_name,
                 "progress": pct / 100.0,
                 "accent": "#FF7AB6",
+                "col": main_col,
                 "slider": {
                     "action": "set_volume",
                     "value": pct,
@@ -181,7 +190,8 @@ class Module(BaseModule):
             },
             {
                 "type": "controls",
-                "style": "transport",
+                "style": "pill",
+                "col": main_col,
                 "items": [
                     {
                         "id": "toggle_mute",
@@ -199,12 +209,14 @@ class Module(BaseModule):
                 ],
             },
         ]
+
         if self.outputs:
             blocks.append(
                 {
                     "type": "toggles",
                     "title": "OUTPUTS",
                     "action": "toggle_endpoint",
+                    "col": side_col,
                     "items": [
                         {
                             "id": dev["id"],
@@ -222,6 +234,7 @@ class Module(BaseModule):
                     "type": "toggles",
                     "title": "MICROPHONES",
                     "action": "toggle_endpoint",
+                    "col": 0,
                     "items": [
                         {
                             "id": mic["id"],
