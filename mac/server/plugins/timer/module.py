@@ -61,6 +61,9 @@ class Module(BaseModule):
     def page(self) -> dict:
         total = max(self.duration, 1.0)
         progress = min(1.0, max(0.0, 1.0 - (self.remaining / total)))
+        ends_at = "—"
+        if self.running and self.remaining > 0:
+            ends_at = time.strftime("%H:%M", time.localtime(time.time() + self.remaining))
         return {
             "blocks": [
                 {
@@ -71,10 +74,20 @@ class Module(BaseModule):
                     "sub": "Running" if self.running else ("Done" if self.remaining <= 0 else "Paused"),
                     "progress": progress,
                     "accent": "#B69CFF",
+                    "col": 0,
+                },
+                {
+                    "type": "kv",
+                    "col": 0,
+                    "items": [
+                        {"label": "ENDS AT", "value": ends_at},
+                        {"label": "LENGTH", "value": f"{int(total // 60)} min"},
+                    ],
                 },
                 {
                     "type": "controls",
                     "style": "pill",
+                    "col": 1,
                     "items": [
                         {
                             "id": "pause" if self.running else "start",
@@ -85,6 +98,5 @@ class Module(BaseModule):
                         {"id": "reset", "icon": "prev", "label": "Reset"},
                     ],
                 },
-
             ]
         }

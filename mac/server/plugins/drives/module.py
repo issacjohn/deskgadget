@@ -92,8 +92,9 @@ class Module(BaseModule):
             blocks.append(
                 {
                     "type": "gauges",
+                    "col": 0,
                     "items": [
-                        {"label": d["mount"], "value": round(d["percent"]), "suffix": "%"}
+                        {"label": "DISK", "value": round(d["percent"]), "suffix": "%"}
                         for d in self.drives
                     ],
                 }
@@ -101,6 +102,7 @@ class Module(BaseModule):
         blocks.append(
             {
                 "type": "meters",
+                "col": 1,
                 "items": [
                     {
                         "label": d["mount"],
@@ -117,6 +119,7 @@ class Module(BaseModule):
         blocks.append(
             {
                 "type": "kv",
+                "col": 1,
                 "items": [
                     {"label": "Volumes", "value": str(len(self.drives))},
                     {"label": "Free", "value": f"{total_free} GB"},

@@ -43,6 +43,7 @@ class Module(BaseModule):
             note = {
                 "type": "note",
                 "label": "ON THE MAC CLIPBOARD",
+                "col": 0,
                 "text": collapsed[:600] + ("…" if len(collapsed) > 600 else ""),
                 "meta": f"{len(text)} chars · {text.count(chr(10)) + 1} lines",
             }
@@ -50,6 +51,7 @@ class Module(BaseModule):
             note = {
                 "type": "note",
                 "label": "MAC CLIPBOARD",
+                "col": 0,
                 "text": "Nothing copied yet",
                 "meta": "Copy something on the Mac, or send text across",
             }
@@ -59,6 +61,7 @@ class Module(BaseModule):
             {
                 "type": "textinput",
                 "label": "SEND TEXT TO THE MAC",
+                "col": 1,
                 "placeholder": "Type or paste, then send",
                 "button": "Copy on Mac",
                 "action": "set_clipboard",

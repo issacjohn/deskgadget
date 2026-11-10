@@ -243,19 +243,16 @@ class Module(BaseModule):
             {"label": "RAM", "value": round(self.mem_percent), "suffix": "%"},
             {"label": "DISK", "value": round(self.disk_percent), "suffix": "%"},
         ]
-        if self.batt_percent is not None:
-            gauges.append(
-                {"label": "BATT", "value": round(self.batt_percent), "suffix": "%"}
-            )
 
         blocks: list[dict] = []
         if screen_recording_allowed() is False:
             blocks.append(
                 {
                     "type": "note",
-                    "label": "LIMITED ACTION",
-                    "text": "Screenshots need Screen Recording. Lock, screen off and desktop still work.",
-                    "meta": "Privacy & Security → Screen Recording → DeskGadget",
+                    "label": "PERMISSION",
+                    "text": "Screenshots need Screen Recording.",
+                    "meta": "Optional",
+                    "col": 0,
                 }
             )
         blocks += [
@@ -277,7 +274,7 @@ class Module(BaseModule):
             },
             {
                 "type": "meters",
-                "col": 2,
+                "col": 1,
                 "items": [
                     {
                         "label": "Memory",
@@ -286,7 +283,7 @@ class Module(BaseModule):
                         "right": f"{self.mem_total} GB",
                     },
                     {
-                        "label": "Disk /",
+                        "label": "Disk",
                         "value": self.disk_percent,
                         "left": f"{self.disk_free} GB free",
                         "right": f"{self.disk_total} GB",
@@ -295,7 +292,7 @@ class Module(BaseModule):
             },
             {
                 "type": "kv",
-                "col": 1,
+                "col": 2,
                 "items": [
                     {"label": "Down", "value": self._rate(self.net_down)},
                     {"label": "Up", "value": self._rate(self.net_up)},
@@ -318,7 +315,7 @@ class Module(BaseModule):
             (
                 {
                     "type": "kv",
-                    "col": 0,
+                    "col": 2,
                     "items": [
                         {"label": "Battery", "value": f"{self.batt_percent:.0f}%"},
                         {
@@ -331,7 +328,7 @@ class Module(BaseModule):
                 if self.batt_percent is not None
                 else {
                     "type": "kv",
-                    "col": 0,
+                    "col": 2,
                     "items": [
                         {"label": "Power", "value": "AC"},
                         {"label": "Battery", "value": "None"},

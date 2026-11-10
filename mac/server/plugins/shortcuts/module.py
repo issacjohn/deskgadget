@@ -145,7 +145,16 @@ class Module(BaseModule):
                     "label": "SHORTCUTS",
                     "value": "0",
                     "unit": "",
-                    "sub": "Add shortcuts in the dashboard",
-                }
+                    "sub": "Nothing pinned yet",
+                    "accent": self.accent,
+                    "col": 0,
+                },
+                {
+                    "type": "note",
+                    "label": "SET UP",
+                    "text": "Open the dashboard on the Mac → Shortcuts → Add app. Steam games are detected automatically.",
+                    "meta": "New shortcuts appear here within a few seconds",
+                    "col": 1,
+                },
             ]
         return {"blocks": blocks}

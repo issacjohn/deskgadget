@@ -170,11 +170,21 @@ class Module(BaseModule):
                     "col": 0,
                 }
             )
+        else:
+            blocks.append(
+                {
+                    "type": "note",
+                    "label": "NOTHING PLAYING",
+                    "text": "Start something on the Mac — Spotify, Music or a browser.",
+                    "meta": "Volume and outputs work regardless",
+                    "col": 0,
+                }
+            )
 
         blocks += [
             {
                 "type": "hero",
-                "label": "MAC VOLUME",
+                "label": "VOLUME",
                 "value": "MUTED" if self.muted else str(pct),
                 "unit": "" if self.muted else "%",
                 "sub": self.device_name,

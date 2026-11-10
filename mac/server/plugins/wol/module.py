@@ -86,11 +86,19 @@ class Module(BaseModule):
                     {
                         "type": "hero",
                         "label": "WAKE ON LAN",
-                        "value": "--",
+                        "value": "0",
                         "unit": "",
-                        "sub": "Add targets in the dashboard",
+                        "sub": "No targets yet",
                         "accent": self.accent,
-                    }
+                        "col": 0,
+                    },
+                    {
+                        "type": "note",
+                        "label": "SET UP",
+                        "text": "In the dashboard, add a target as Name=MAC — for example NAS=AA:BB:CC:DD:EE:FF.",
+                        "meta": "One magic packet per tap, over UDP 9",
+                        "col": 1,
+                    },
                 ]
             }
         return {
