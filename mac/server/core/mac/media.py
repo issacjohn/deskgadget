@@ -15,10 +15,12 @@ No private frameworks are loaded, which is what keeps this working across macOS
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Optional
 
+from ..paths import bundle_dirs
 from . import osascript, run, which
 
 log = logging.getLogger("deskgadget.mac.media")
@@ -28,6 +30,18 @@ _APPS = (
     ("Spotify", "Spotify"),
     ("Music", "Apple Music"),
 )
+
+#: bundle id -> the name the phone shows
+_BUNDLES = {
+    "org.mozilla.firefox": "Firefox",
+    "com.google.chrome": "Chrome",
+    "com.microsoft.edgemac": "Edge",
+    "com.apple.Music": "Apple Music",
+    "com.apple.Safari": "Safari",
+    "com.spotify.client": "Spotify",
+    "com.brave.Browser": "Brave",
+    "com.videolan.vlc": "VLC",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -79,6 +93,100 @@ def _download_art(url: str, art_dir: Optional[Path]) -> str:
     except Exception:
         log.debug("artwork download failed", exc_info=True)
     return ""
+
+
+# --------------------------------------------------------------------------- #
+# backend 0: bundled MediaRemote adapter (BSD-3, no Automation permission)
+# --------------------------------------------------------------------------- #
+def _adapter_paths() -> Optional[tuple[Path, Path]]:
+    candidates: list[Path] = []
+    try:
+        for base in bundle_dirs():
+            candidates.append(base / "mediaremote")
+            candidates.append(base / "vendor" / "mediaremote")
+    except Exception:
+        pass
+    # source checkouts keep it next to server/, not inside it
+    try:
+        candidates.append(Path(__file__).resolve().parents[3] / "vendor" / "mediaremote")
+    except IndexError:
+        pass
+    for base in candidates:
+        script = base / "mediaremote-adapter.pl"
+        framework = base / "MediaRemoteAdapter.framework"
+        if script.is_file() and framework.is_dir():
+            return script, framework
+    return None
+
+
+def adapter_available() -> bool:
+    return _adapter_paths() is not None
+
+
+def transport_available() -> bool:
+    """True when media transport needs no Automation prompt."""
+    return adapter_available() or _nowplaying_bin() is not None
+
+
+def _adapter_snapshot(art_dir: Optional[Path]) -> Optional[dict]:
+    pair = _adapter_paths()
+    if pair is None:
+        return None
+    script, framework = pair
+    result = run(
+        [
+            which("perl") or "/usr/bin/perl",
+            str(script),
+            str(framework),
+            "get",
+            "--no-artwork",
+        ],
+        timeout=12,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads((result.stdout or "").strip() or "null")
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not str(data.get("title") or "").strip():
+        return None
+
+    bundle = str(data.get("bundleIdentifier") or "")
+    try:
+        position = float(data.get("elapsedTime") or 0)
+    except (TypeError, ValueError):
+        position = 0.0
+    try:
+        duration = float(data.get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    return {
+        "title": str(data.get("title") or "").strip(),
+        "artist": str(data.get("artist") or "").strip(),
+        "album": str(data.get("album") or "").strip(),
+        "source": _BUNDLES.get(bundle, ""),
+        "playing": bool(data.get("playing")),
+        "position": max(0.0, position),
+        "duration": max(0.0, duration),
+        "artwork": "",
+    }
+
+
+def _adapter_send(action: str, seconds: float = 0.0) -> bool:
+    pair = _adapter_paths()
+    if pair is None:
+        return False
+    script, framework = pair
+    perl = which("perl") or "/usr/bin/perl"
+    if action == "seek":
+        args = [perl, str(script), str(framework), "seek", str(max(0.0, float(seconds)))]
+    else:
+        command_id = {"play_pause": "2", "next": "4", "prev": "5"}.get(action)
+        if command_id is None:
+            return False
+        args = [perl, str(script), str(framework), "send", command_id]
+    return run(args, timeout=10).returncode == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +328,7 @@ def _snapshot_applescript(art_dir: Optional[Path]) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 def snapshot(art_dir: Optional[Path] = None) -> Optional[dict]:
     """Current media session, or None. Safe from any thread."""
-    for backend in (_snapshot_nowplaying, _snapshot_applescript):
+    for backend in (_adapter_snapshot, _snapshot_nowplaying, _snapshot_applescript):
         try:
             value = backend(art_dir)
         except Exception:
@@ -258,6 +366,8 @@ end run
 
 def command(action: str) -> bool:
     """Play/pause, next or previous on whatever is playing."""
+    if _adapter_send(action):
+        return True
     binary = _nowplaying_bin()
     if binary:
         mapping = {"play_pause": "togglePlayPause", "next": "nextTrack", "prev": "previousTrack"}
@@ -272,6 +382,8 @@ def command(action: str) -> bool:
 
 def seek(seconds: float) -> bool:
     seconds = max(0.0, float(seconds))
+    if _adapter_send("seek", seconds):
+        return True
     binary = _nowplaying_bin()
     if binary and run([binary, "seek", str(seconds)], timeout=6).returncode == 0:
         return True

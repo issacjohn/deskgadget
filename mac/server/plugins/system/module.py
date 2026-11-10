@@ -17,7 +17,7 @@ import psutil
 import requests
 
 from core.base import Module as BaseModule
-from core.mac import NO_WINDOW, power
+from core.mac import NO_WINDOW, power, screen_recording_allowed
 from core.netutil import lan_ip
 
 
@@ -228,7 +228,17 @@ class Module(BaseModule):
                 {"label": "BATT", "value": round(self.batt_percent), "suffix": "%"}
             )
 
-        blocks = [
+        blocks: list[dict] = []
+        if screen_recording_allowed() is False:
+            blocks.append(
+                {
+                    "type": "note",
+                    "label": "LIMITED ACTION",
+                    "text": "Screenshots need Screen Recording. Lock, screen off and desktop still work.",
+                    "meta": "Privacy & Security → Screen Recording → DeskGadget",
+                }
+            )
+        blocks += [
             {
                 "type": "controls",
                 "style": "stack",

@@ -125,6 +125,19 @@ fi
     exit 1
   }
 
+# ---- 5b. permission-free media helper (BSD-3) -----------------------------
+VENDOR="$ROOT/vendor/mediaremote"
+if [ -d "$VENDOR" ]; then
+  DEST="$APP/Contents/Frameworks/mediaremote"
+  rm -rf "$DEST"
+  mkdir -p "$DEST"
+  ditto "$VENDOR/MediaRemoteAdapter.framework" "$DEST/MediaRemoteAdapter.framework"
+  cp "$VENDOR/mediaremote-adapter.pl" "$DEST/"
+  cp "$VENDOR/LICENSE" "$DEST/" 2>/dev/null || true
+  cp "$VENDOR/NOTICE" "$DEST/" 2>/dev/null || true
+  chmod +x "$DEST/mediaremote-adapter.pl"
+fi
+
 # ---- 6. Info.plist ---------------------------------------------------------
 PLIST="$APP/Contents/Info.plist"
 pb() { /usr/libexec/PlistBuddy -c "$1" "$PLIST" >/dev/null 2>&1 || true; }

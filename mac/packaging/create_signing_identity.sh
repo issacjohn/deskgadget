@@ -13,7 +13,7 @@ set -euo pipefail
 NAME="DeskGadget Local"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$NAME"; then
+if security find-identity -p codesigning 2>/dev/null | grep -q "$NAME"; then
   echo "Identity already exists: $NAME"
   exit 0
 fi
@@ -30,16 +30,16 @@ trap 'rm -rf "$TMP"' EXIT
 
 /usr/bin/openssl pkcs12 -export \
   -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
-  -name "$NAME" -out "$TMP/identity.p12" -passout pass: \
+  -name "$NAME" -out "$TMP/identity.p12" -passout pass:deskgadget -legacy \
   >/dev/null 2>&1
 
 # importing into the login keychain does not need admin rights; codesign is
 # allowed to use the key without an interactive prompt
-security import "$TMP/identity.p12" -k "$KEYCHAIN" -P "" \
+security import "$TMP/identity.p12" -k "$KEYCHAIN" -P deskgadget \
   -T /usr/bin/codesign >/dev/null
 
 echo "Created identity: $NAME"
-security find-identity -v -p codesigning | grep "$NAME" || true
+security find-identity -p codesigning | grep "$NAME" || true
 echo
 echo "Build with:"
 echo "  CODESIGN_IDENTITY=\"$NAME\" ./packaging/build_mac_bundle.sh"

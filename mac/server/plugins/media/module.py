@@ -140,6 +140,15 @@ class Module(BaseModule):
         playing = bool((self.now or {}).get("playing"))
         blocks: list[dict] = []
         now = self.now or {}
+        if not media.transport_available():
+            blocks.append(
+                {
+                    "type": "note",
+                    "label": "LIMITED MEDIA",
+                    "text": "Volume and mute work. Grant Automation for transport, or install nowplaying-cli.",
+                    "meta": "The bundled app includes a permission-free helper",
+                }
+            )
         if now.get("title"):
             blocks.append(
                 {

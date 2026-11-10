@@ -1,0 +1,6 @@
+MediaRemoteAdapter (mediaremote-adapter)
+Source: https://github.com/ungive/mediaremote-adapter
+Commit: 0e82bf1
+License: BSD 3-Clause (see LICENSE)
+
+Bundled to provide permission-free now-playing and transport control.

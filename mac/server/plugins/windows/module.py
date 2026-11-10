@@ -60,9 +60,7 @@ class Module(BaseModule):
 
     def page(self) -> dict:
         blocks: list[dict] = []
-        permission = (caps().get("permissions") or {}).get("accessibility")
-
-        if self.items and permission is False:
+        if self.items and any(w["key"].startswith("cg:") for w in self.items):
             blocks.append(
                 {
                     "type": "note",

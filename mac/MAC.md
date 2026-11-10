@@ -195,7 +195,7 @@ restart the server (or toggle the app off/on in the list).
 | Module | Backend | Fallback |
 |---|---|---|
 | **System** | psutil + `sysctl` + `pmset` + `screencapture` | — |
-| **Media** | CoreAudio (ctypes) for volume and per-device mute; AppleScript or `nowplaying-cli` for transport | `osascript set volume` |
+| **Media** | CoreAudio (ctypes) for volume and mute; **bundled MediaRemote adapter (BSD-3)** for transport and metadata, no Automation prompt | `nowplaying-cli`, then AppleScript |
 | **Windows** | Accessibility API (`AXUIElement`) + NSWorkspace | CoreGraphics (`CGWindowList`) + app activation; no permission needed |
 
 The window switcher is the one module with a no-permission path: without
@@ -231,6 +231,16 @@ The camera module still receives frames and exposes `/api/camera/latest.jpg`
 and `/api/camera/stream` on every Mac, with no OBS installed.
 
 ---
+
+## Third-party notices
+
+* **MediaRemote adapter** — BSD 3-Clause, © 2025 Jonas van den Berg and
+  contributors. <https://github.com/ungive/mediaremote-adapter>. Bundled as
+  `vendor/mediaremote/` (script + `MediaRemoteAdapter.framework`) and used for
+  permission-free now-playing and transport control. Its `LICENSE` and `NOTICE`
+  ship inside the app at `Contents/Frameworks/mediaremote/`.
+* **adb** — Android SDK Platform Tools, Apache 2.0. Bundled for USB mode.
+* **pyobjc** — MIT. Runtime bridge to AppKit, Quartz, Accessibility and WebKit.
 
 ## Updating
 

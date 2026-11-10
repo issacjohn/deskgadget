@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from core.base import Module as BaseModule
-from core.mac import pointer
+from core.mac import accessibility_trusted, pointer
 
 log = logging.getLogger("deskgadget.touchpad")
 
@@ -55,15 +55,24 @@ class Module(BaseModule):
 
     def page(self) -> dict:
         hint = "Drag to move · Tap to click · Two fingers to scroll"
-        if not pointer.available():
-            hint = "Install pyobjc or cliclick to enable the touchpad"
-        return {
-            "blocks": [
+        blocks: list[dict] = []
+        if accessibility_trusted() is False:
+            blocks.append(
                 {
-                    "type": "touchpad",
-                    "label": "TOUCHPAD",
-                    "sensitivity": self.settings.get("sensitivity", 1.0),
-                    "hint": hint,
+                    "type": "note",
+                    "label": "ACCESSIBILITY REQUIRED",
+                    "text": "Grant Accessibility to control the pointer from the phone.",
+                    "meta": "Privacy & Security → Accessibility → DeskGadget",
                 }
-            ]
-        }
+            )
+        elif not pointer.available():
+            hint = "Install pyobjc or cliclick to enable the touchpad"
+        blocks.append(
+            {
+                "type": "touchpad",
+                "label": "TOUCHPAD",
+                "sensitivity": self.settings.get("sensitivity", 1.0),
+                "hint": hint,
+            }
+        )
+        return {"blocks": blocks}
