@@ -312,7 +312,7 @@
     <span class="audmeter"><i id="audbar"></i></span>
     <span class="hint" id="audstat" style="margin:0">idle</span>
     <div class="spacer"></div>
-    <span class="hint" id="audroute" style="margin:0">-&gt; DeskGadget Audio Interface</span>
+    <span class="hint" id="audroute" style="margin:0">-&gt; CABLE Output (microphone)</span>
     <input id="audvol" type="range" min="0" max="100" value="90" style="width:110px" />
     <button class="ghost" id="audmute">Mute</button>
     <label class="updbeta"><input type="checkbox" id="audgate" checked /> Gate</label>
@@ -361,9 +361,9 @@
     </div>
     <p class="hint" style="margin:14px 0 0;line-height:1.6">
       Windows lists microphones that come from an audio driver. Install
-      <b>VB-CABLE</b> (free), then DeskGadget detects it and routes the phone into
-      it — Teams, Zoom and Meet see a normal microphone. Your phone audio already
-      plays on this PC; this is what makes it an input.
+      <b>VB-CABLE</b> (free) and restart Windows. DeskGadget then feeds
+      <b>CABLE Input</b>, and Windows exposes <b>CABLE Output</b> as the
+      microphone you pick in Teams, Zoom or Meet.
       <br /><br />
       VB-CABLE is donationware by VB-Audio — if it is useful,
       <a href="https://vb-audio.com/Cable/" target="_blank">support the project</a>.
@@ -1196,15 +1196,6 @@ let audMuted = false;
 
 function audEl(id){ return document.getElementById(id); }
 
-function cableScore(name){
-  let score = 0;
-  if(/^cable input/i.test(name)) score += 10;
-  if(/16ch/i.test(name)) score -= 6;
-  if(/virtual cable/i.test(name)) score += 2;
-  if(/point/i.test(name)) score -= 3;
-  return score;
-}
-
 function renderAudio(r){
   audMuted = !!r.muted;
   const stat = audEl('audstat');
@@ -1219,21 +1210,19 @@ function renderAudio(r){
   const vol = audEl('audvol');
   if(document.activeElement !== vol) vol.value = Math.round((r.volume || 0) * 100);
 
-  const names = (r.devices || []).map(d => d.name);
-  const cable = names
-    .filter(n => /cable input|vb-audio|voicemeeter|virtual cable/i.test(n))
-    .sort((a, b) => cableScore(b) - cableScore(a))[0] || '';
+  const cable = r.cable || '';
 
   const route = audEl('audroute');
-  if(route) route.textContent = cable ? '→ DeskGadget Audio Interface' : '→ VB-CABLE missing';
+  if(route) route.textContent = cable ? '→ CABLE Output (microphone)' : '→ VB-CABLE missing';
   if(r.error) stat.textContent = 'error';
 
   const modal = audEl('micModal');
   if(cable){
     if(modal) modal.classList.remove('show');
     audEl('audhint').innerHTML =
-      'Phone audio is routed into <b>VB-CABLE</b> automatically. ' +
-      'In Teams, Zoom or Meet, pick <b>CABLE Output</b> as the microphone.';
+      'DeskGadget feeds <b>CABLE Input</b>. Windows exposes the other side as ' +
+      '<b>CABLE Output</b> — that is the <b>microphone (input)</b> you select in ' +
+      'Teams, Zoom or Meet.';
   }else{
     if(r.needs_virtual_mic && r.live && sessionStorage.getItem('micPrompt') !== 'off' && modal){
       modal.classList.add('show');

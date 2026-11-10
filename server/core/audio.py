@@ -96,6 +96,24 @@ class AudioSink:
             self.state["error"] = str(exc)
         return out
 
+    def capture_cable(self) -> str:
+        """The cable's capture side: the endpoint call apps use as a microphone."""
+        if sd is None:
+            return ""
+        try:
+            for device in sd.query_devices():
+                name = str(device.get("name", ""))
+                lowered = name.lower()
+                if (
+                    int(device.get("max_input_channels", 0)) > 0
+                    and "cable output" in lowered
+                    and "point" not in lowered
+                ):
+                    return name
+        except Exception:
+            pass
+        return ""
+
     def _cable(self) -> dict | None:
         """The VB-CABLE render side, chosen automatically. No other device."""
         best: dict | None = None
@@ -212,14 +230,22 @@ class AudioSink:
 
     # -- api ---------------------------------------------------------------
     def rescan(self) -> list[dict]:
-        """Re-enumerate devices, e.g. after the user installs a virtual cable."""
-        self._close_stream()
+        """Re-enumerate devices, e.g. after the user installs a virtual cable.
+
+        PortAudio has to be restarted to see new endpoints, which is not safe
+        while the output thread is in a write. Stop it first, then bring it
+        back so the next chunk reopens on the right device.
+        """
+        was_running = self._thread is not None and self._thread.is_alive()
+        self.stop()
         if sd is not None:
             try:
                 sd._terminate()
                 sd._initialize()
             except Exception:
                 pass
+        if was_running:
+            self.start()
         return self.devices()
 
     def configure(

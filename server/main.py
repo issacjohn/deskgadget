@@ -1112,19 +1112,14 @@ async def ws_mic(ws: WebSocket):
         log.debug("microphone websocket closed", exc_info=True)
 
 
-CABLE_RE = re.compile(
-    r"cable input|vb-audio|voicemeeter|virtual cable", re.IGNORECASE
-)
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
 _mic_prompt = {"asked": False}
 _mic_prompt_lock = threading.Lock()
 
 
 def _virtual_mic_name(listed: list[dict] | None = None) -> str:
-    for device in listed if listed is not None else audio_sink.devices():
-        if CABLE_RE.search(str(device.get("name", ""))):
-            return str(device["name"])
-    return ""
+    """The capture endpoint call apps see as a microphone (CABLE Output)."""
+    return audio_sink.capture_cable()
 
 
 def _audio_payload() -> dict:
