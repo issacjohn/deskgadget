@@ -19,11 +19,15 @@ except Exception:  # missing runtime, e.g. a stripped build
 
 RATE = 48000
 BLOCK = 960  # 20 ms
+# Bound the jitter buffer: past ~160 ms the phone is audibly late, so drop the
+# oldest chunks instead of letting a slow stretch turn into seconds of delay.
+MAX_LAG_CHUNKS = 8
+KEEP_LAG_CHUNKS = 4
 
 
 class AudioSink:
     def __init__(self) -> None:
-        self._q: queue.Queue[bytes] = queue.Queue(maxsize=150)
+        self._q: queue.Queue[bytes] = queue.Queue(maxsize=40)
         self._stream = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -216,6 +220,12 @@ class AudioSink:
         self._last_frame = time.time()
         if not self.state.get("enabled", True):
             return
+        if self._q.qsize() > MAX_LAG_CHUNKS:
+            while self._q.qsize() > KEEP_LAG_CHUNKS:
+                try:
+                    self._q.get_nowait()
+                except queue.Empty:
+                    break
         try:
             self._q.put_nowait(data)
         except queue.Full:
@@ -272,6 +282,7 @@ class AudioSink:
             **self.state,
             "playing": self._stream is not None,
             "live": live,
+            "queue": self._q.qsize(),
             "level": round(min(1.0, self._level), 3),
             "frames": self._frames,
             "rate": RATE,
