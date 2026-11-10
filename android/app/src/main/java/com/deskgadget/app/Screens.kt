@@ -1297,7 +1297,7 @@ private fun ModuleRail(
     onSelect: (Int) -> Unit,
 ) {
     val palette = LocalPalette.current
-    val width = if (compact) 78.dp else 96.dp
+    val width = if (compact) 84.dp else 104.dp
     val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
     val homeAccent = palette.monoAccent ?: Color(0xFF7CE7FF)
     val activeIndex = pager.currentPage - offset
@@ -1490,9 +1490,10 @@ private fun RailItem(
         Spacer(Modifier.height(3.dp))
         Text(
             label,
-            color = if (active) Ink else Muted,
-            fontSize = if (compact) 8.5.sp else 9.5.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (active) Ink else Ink.copy(alpha = 0.76f),
+            fontSize = if (compact) 9.sp else 10.5.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            letterSpacing = 0.1.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
