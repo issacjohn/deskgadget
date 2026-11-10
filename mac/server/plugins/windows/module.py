@@ -23,7 +23,7 @@ class Module(BaseModule):
 
     async def update(self) -> None:
         try:
-            limit = max(1, min(40, int(self.settings.get("limit", 20) or 20)))
+            limit = max(1, min(60, int(self.settings.get("limit", 40) or 40)))
         except Exception:
             limit = 20
         try:

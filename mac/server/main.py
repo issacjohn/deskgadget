@@ -334,6 +334,16 @@ async def api_mac_reveal():
     return {"ok": ok}
 
 
+@app.get("/api/mac/selftest")
+async def api_mac_selftest():
+    """Verify that AppKit work is being marshalled to the main thread."""
+    from .core.mac import mainthread
+
+    main_id = threading.main_thread().ident
+    ran_on = await asyncio.to_thread(mainthread.run, lambda: threading.get_ident(), 3.0, None)
+    return {"ok": ran_on == main_id, "main_thread": main_id, "ran_on": ran_on}
+
+
 async def build_state() -> dict:
     devices = []
     for dev_id, dev in store.data.get("devices", {}).items():

@@ -13,9 +13,10 @@ published wheels for the current Python.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
-from . import osascript
+from . import mainthread, osascript
 
 log = logging.getLogger("deskgadget.mac.windows")
 
@@ -93,19 +94,26 @@ def _running_apps() -> list[dict]:
         apps = []
         for app in workspace.runningApplications():
             try:
-                if int(app.activationPolicy()) != 0:  # NSApplicationActivationPolicyRegular
+                # 0 = regular, 1 = accessory (menu bar apps can own windows),
+                # -1 = prohibited (never has a UI)
+                policy = int(app.activationPolicy())
+                if policy > 1:
                     continue
                 name = str(app.localizedName() or "")
                 if not name:
                     continue
+                pid = int(app.processIdentifier())
+                if pid == os.getpid():
+                    continue  # never offer DeskGadget's own dashboard
                 bundle = app.bundleURL()
                 path = str(bundle.path()) if bundle is not None else ""
                 apps.append(
                     {
-                        "pid": int(app.processIdentifier()),
+                        "pid": pid,
                         "app": name,
                         "path": path,
                         "hidden": bool(app.isHidden()),
+                        "accessory": policy == 1,
                     }
                 )
             except Exception:
@@ -131,12 +139,20 @@ def _accessibility_list(limit: int) -> list[dict]:
             continue
         for index, window in enumerate(windows):
             try:
-                title = str(_copy(window, "AXTitle") or "").strip()
                 role = str(_copy(window, "AXRole") or "")
-                if role and role != "AXWindow":
+                if role and role not in ("AXWindow", "AXDialog", "AXSheet"):
                     continue
+                title = str(_copy(window, "AXTitle") or "").strip()
                 if not title:
-                    continue
+                    title = str(_copy(window, "AXDocument") or "").strip()
+                if not title:
+                    title = str(_copy(window, "AXDescription") or "").strip()
+                if not title:
+                    # Menu bar agents own plumbing windows; real apps may own
+                    # untitled panels. Only name the latter after the app.
+                    if app.get("accessory"):
+                        continue
+                    title = f"{app['app']} window {index + 1}"
                 minimized = bool(_copy(window, "AXMinimized") or False)
                 items.append(
                     {
@@ -206,6 +222,21 @@ def _activate_app(pid: int, name: str) -> bool:
 
 
 def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
+    """Raise one window. Runs on the AppKit main thread inside the bundled app."""
+    try:
+        return bool(
+            mainthread.run(
+                lambda: _focus_window(key, app_name, title),
+                timeout=3.0,
+                default=False,
+            )
+        )
+    except Exception:
+        log.debug("focus dispatch failed", exc_info=True)
+        return False
+
+
+def _focus_window(key: str, app_name: str = "", title: str = "") -> bool:
     """Raise one window. ``key`` is 'pid:index' from list_windows."""
     pid = 0
     index = 0
