@@ -39,9 +39,10 @@ class Module(BaseModule):
         target = next((window for window in self.items if window["key"] == key), None)
         app = target["app"] if target else ""
         title = target["title"] if target else ""
+        path = target.get("path", "") if target else ""
         ok = False
         try:
-            ok = windows.focus_window(key, app, title)
+            ok = windows.focus_window(key, app, title, path)
         except Exception:
             log.debug("focus failed", exc_info=True)
         if ok:

@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Optional
 
-from . import mainthread, osascript
+from . import mainthread, osascript, run
 
 log = logging.getLogger("deskgadget.mac.windows")
 
@@ -304,7 +304,14 @@ def list_windows(limit: int = 20) -> list[dict]:
     return _applescript_list(limit)
 
 
-def _activate_app(pid: int, name: str) -> bool:
+def _activate_app(pid: int, name: str, path: str = "") -> bool:
+    # LaunchServices is the reliable way to bring another app forward and it
+    # needs no TCC permission; NSRunningApplication.activate often reports
+    # success without actually raising the app on newer macOS.
+    target = path or name
+    if target and run(["/usr/bin/open", "-a", target], timeout=6).returncode == 0:
+        return True
+
     kit = _appkit()
     if kit is not None and pid:
         try:
@@ -312,7 +319,8 @@ def _activate_app(pid: int, name: str) -> bool:
                 if int(app.processIdentifier()) != pid:
                     continue
                 # 1 = NSApplicationActivateAllWindows, 2 = IgnoringOtherApps
-                return bool(app.activateWithOptions_(1 | 2))
+                if bool(app.activateWithOptions_(1 | 2)):
+                    return True
         except Exception:
             log.debug("activation failed", exc_info=True)
     return bool(osascript(f'tell application {name!r} to activate', timeout=6)) or bool(
@@ -320,7 +328,7 @@ def _activate_app(pid: int, name: str) -> bool:
     )
 
 
-def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
+def focus_window(key: str, app_name: str = "", title: str = "", path: str = "") -> bool:
     """Raise one window. Runs on the AppKit main thread inside the bundled app."""
     if key.startswith("cg:"):
         try:
@@ -331,7 +339,7 @@ def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
         try:
             return bool(
                 mainthread.run(
-                    lambda: _activate_app(pid, app_name),
+                    lambda: _activate_app(pid, app_name, path),
                     timeout=3.0,
                     default=False,
                 )
@@ -343,7 +351,7 @@ def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
     try:
         return bool(
             mainthread.run(
-                lambda: _focus_window(key, app_name, title),
+                lambda: _focus_window(key, app_name, title, path),
                 timeout=3.0,
                 default=False,
             )
@@ -353,7 +361,7 @@ def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
         return False
 
 
-def _focus_window(key: str, app_name: str = "", title: str = "") -> bool:
+def _focus_window(key: str, app_name: str = "", title: str = "", path: str = "") -> bool:
     """Raise one window. ``key`` is 'pid:index' from list_windows."""
     pid = 0
     index = 0
@@ -386,11 +394,11 @@ def _focus_window(key: str, app_name: str = "", title: str = "") -> bool:
                     AS.AXUIElementPerformAction(target, "AXRaise")
                 except Exception:
                     pass
-            if _activate_app(pid, app_name):
+            if _activate_app(pid, app_name, path):
                 return True
         except Exception:
             log.debug("AX focus failed", exc_info=True)
 
     if app_name:
-        return _activate_app(pid, app_name)
+        return _activate_app(pid, app_name, path)
     return False
