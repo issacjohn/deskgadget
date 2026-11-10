@@ -1299,17 +1299,20 @@ private fun ModuleRail(
 ) {
     val palette = LocalPalette.current
     val width = if (compact) 84.dp else 104.dp
-    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
+    val corner = if (compact) 20.dp else 24.dp
+    // The rail is part of the screen edge: square on the left, rounded on the right.
+    val shape = RoundedCornerShape(
+        topStart = 0.dp,
+        topEnd = corner,
+        bottomEnd = corner,
+        bottomStart = 0.dp,
+    )
     val homeAccent = palette.monoAccent ?: Color(0xFF7CE7FF)
     val activeIndex = pager.currentPage - offset
 
     Column(
         Modifier
-            .padding(
-                start = 10.dp,
-                top = if (compact) 4.dp else 10.dp,
-                bottom = if (compact) 4.dp else 10.dp,
-            )
+            .padding(start = 0.dp, top = 0.dp, bottom = 0.dp)
             .width(width)
             .fillMaxHeight()
             .clip(shape)
