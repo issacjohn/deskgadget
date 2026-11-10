@@ -82,30 +82,6 @@ val LiquidPalette = Palette(
     blur = 26f,
 )
 
-/** Maximum frost: brighter fill, thicker light borders, heavy blur. */
-val FullGlassPalette = Palette(
-    id = "glass",
-    name = "Full Glass",
-    bgTop = Color(0xFF090D14),
-    bgMid = Color(0xFF0E141E),
-    bgBottom = Color(0xFF06090E),
-    blobs = listOf(
-        Blob(Color(0xFF6C8BFF), 0.34f, 0.20f, 0.12f, 0.95f, 0.21f, 0f),
-        Blob(Color(0xFF6FE7FF), 0.26f, 0.86f, 0.24f, 0.85f, 0.18f, 1.8f),
-        Blob(Color(0xFFBFD0E8), 0.16f, 0.50f, 0.88f, 0.90f, 0.15f, 3.1f),
-        Blob(Color(0xFF5FF0C8), 0.14f, 0.12f, 0.82f, 0.65f, 0.24f, 2.4f),
-    ),
-    vignette = 0.66f,
-    glassTop = Color(0x1CFFFFFF),
-    glassBottom = Color(0x0EFFFFFF),
-    borderTop = Color(0x94FFFFFF),
-    borderMid = Color(0x30FFFFFF),
-    borderBottom = Color(0x4DFFFFFF),
-    sheenTop = Color(0x26FFFFFF),
-    sheenBottom = Color(0x0EFFFFFF),
-    blur = 42f,
-)
-
 val GraphitePalette = Palette(
     id = "graphite",
     name = "Graphite",
@@ -127,28 +103,6 @@ val GraphitePalette = Palette(
     sheenBottom = Color(0x08FFFFFF),
     blur = 22f,
     monoAccent = Color(0xFFC9D4E4),
-)
-
-val AuroraPalette = Palette(
-    id = "aurora",
-    name = "Aurora",
-    bgTop = Color(0xFF04100C),
-    bgMid = Color(0xFF07161A),
-    bgBottom = Color(0xFF030A0A),
-    blobs = listOf(
-        Blob(Color(0xFF10B981), 0.44f, 0.14f, 0.18f, 0.92f, 0.24f, 0f),
-        Blob(Color(0xFF22D3EE), 0.34f, 0.88f, 0.20f, 0.82f, 0.20f, 1.6f),
-        Blob(Color(0xFFA3E635), 0.22f, 0.44f, 0.90f, 0.86f, 0.17f, 2.8f),
-    ),
-    vignette = 0.72f,
-    glassTop = Color(0x1AFFFFFF),
-    glassBottom = Color(0x0AFFFFFF),
-    borderTop = Color(0x59FFFFFF),
-    borderMid = Color(0x14FFFFFF),
-    borderBottom = Color(0x29FFFFFF),
-    sheenTop = Color(0x1FFFFFFF),
-    sheenBottom = Color(0x0DFFFFFF),
-    blur = 28f,
 )
 
 /** True black: OLED-friendly, colour still comes from the modules. */
@@ -201,30 +155,6 @@ val WhitePalette = Palette(
     light = true,
 )
 
-/** Warm evening light: amber, coral and a violet edge. */
-val SunsetPalette = Palette(
-    id = "sunset",
-    name = "Sunset",
-    bgTop = Color(0xFF150810),
-    bgMid = Color(0xFF1C0D16),
-    bgBottom = Color(0xFF0B0508),
-    blobs = listOf(
-        Blob(Color(0xFFFF7A45), 0.44f, 0.18f, 0.22f, 0.95f, 0.24f, 0f),
-        Blob(Color(0xFFFF3D7F), 0.38f, 0.84f, 0.30f, 0.86f, 0.20f, 1.8f),
-        Blob(Color(0xFFFFC371), 0.26f, 0.45f, 0.90f, 0.88f, 0.18f, 2.6f),
-        Blob(Color(0xFF7A3BFF), 0.30f, 0.78f, 0.82f, 0.80f, 0.26f, 3.2f),
-    ),
-    vignette = 0.78f,
-    glassTop = Color(0x16FFFFFF),
-    glassBottom = Color(0x09FFFFFF),
-    borderTop = Color(0x5AFFFFFF),
-    borderMid = Color(0x14FFFFFF),
-    borderBottom = Color(0x26FFFFFF),
-    sheenTop = Color(0x1FFFFFFF),
-    sheenBottom = Color(0x0CFFFFFF),
-    blur = 30f,
-)
-
 /** Deep water: blue and teal with a cool, quiet feel. */
 val OceanPalette = Palette(
     id = "ocean",
@@ -249,18 +179,39 @@ val OceanPalette = Palette(
     blur = 26f,
 )
 
-val Palettes: List<Palette> = listOf(
-    LiquidPalette,
-    FullGlassPalette,
-    BlackPalette,
-    WhitePalette,
-    GraphitePalette,
-    AuroraPalette,
-    SunsetPalette,
-    OceanPalette,
+/** Warm charcoal: copper and amber, no pink or violet. */
+val EmberPalette = Palette(
+    id = "ember",
+    name = "Ember",
+    bgTop = Color(0xFF0A0705),
+    bgMid = Color(0xFF120C08),
+    bgBottom = Color(0xFF060403),
+    blobs = listOf(
+        Blob(Color(0xFFFF7A3C), 0.34f, 0.16f, 0.18f, 0.92f, 0.22f, 0f),
+        Blob(Color(0xFFFFB05C), 0.24f, 0.88f, 0.24f, 0.82f, 0.18f, 1.8f),
+        Blob(Color(0xFF8A3B18), 0.30f, 0.44f, 0.90f, 0.88f, 0.16f, 2.9f),
+    ),
+    vignette = 0.84f,
+    glassTop = Color(0x12FFFFFF),
+    glassBottom = Color(0x07FFFFFF),
+    borderTop = Color(0x40FFFFFF),
+    borderMid = Color(0x12FFFFFF),
+    borderBottom = Color(0x20FFFFFF),
+    sheenTop = Color(0x16FFFFFF),
+    sheenBottom = Color(0x08FFFFFF),
+    blur = 24f,
 )
 
-fun paletteFor(id: String?): Palette = Palettes.firstOrNull { it.id == id } ?: LiquidPalette
+val Palettes: List<Palette> = listOf(
+    BlackPalette,
+    LiquidPalette,
+    GraphitePalette,
+    OceanPalette,
+    EmberPalette,
+    WhitePalette,
+)
+
+fun paletteFor(id: String?): Palette = Palettes.firstOrNull { it.id == id } ?: BlackPalette
 
 /* Text tones follow the active palette, so a light theme gets dark type
    without every call site knowing about themes. */

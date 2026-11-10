@@ -49,6 +49,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Newspaper
@@ -809,89 +810,42 @@ fun DeckScreen(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
-        val wide = maxWidth > maxHeight
+        val compact = maxWidth < 960.dp || maxHeight < 480.dp
         val select: (Int) -> Unit = { index ->
             scope.launch { pager.animateScrollToPage(index) }
         }
 
-        Column(Modifier.fillMaxSize()) {
-            if (wide) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 14.dp, top = 3.dp, bottom = 0.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ConnectionStatus(state)
-                    Spacer(Modifier.width(12.dp))
-                    if (hasHome) {
-                        HomeTab(active = pager.currentPage == 0, onClick = { select(0) })
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    ModuleTabs(pages, pager, homeOffset, Modifier.weight(1f), select)
-                    Spacer(Modifier.width(10.dp))
-                    if (hasHome && pager.currentPage > 0) {
-                        pages.getOrNull(pager.currentPage - 1)?.let { active ->
-                            Text(
-                                active.title.uppercase(),
-                                color = Muted,
-                                fontSize = 9.sp,
-                                letterSpacing = 1.2.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 130.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                        }
-                    }
-                    Text(clock, color = Muted, fontSize = 10.sp, letterSpacing = 0.8.sp)
-                    Spacer(Modifier.width(4.dp))
-                    HeaderIconChip(
-                        Icons.Rounded.PowerSettingsNew,
-                        Color(0xFFFFA3B8),
-                        "Disconnect",
-                        onDisconnect,
-                    )
-                    HeaderChip("\u2665", onClick = { supportOpen = true })
-                }
-            } else {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 6.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConnectionStatus(state)
-                        Spacer(Modifier.weight(1f))
-                        Text(clock, color = Muted, fontSize = 10.sp, letterSpacing = 0.8.sp)
-                        Spacer(Modifier.width(4.dp))
-                        HeaderIconChip(
-                            Icons.Rounded.PowerSettingsNew,
-                            Color(0xFFFFA3B8),
-                            "Disconnect",
-                            onDisconnect,
-                        )
-                        HeaderChip("\u2665", onClick = { supportOpen = true })
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    ModuleTabs(pages, pager, homeOffset, Modifier.fillMaxWidth(), select)
-                }
-            }
+        Row(Modifier.fillMaxSize()) {
+            ModuleRail(
+                pages = pages,
+                pager = pager,
+                offset = homeOffset,
+                hasHome = hasHome,
+                compact = compact,
+                onSelect = select,
+            )
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                DeckTopBar(
+                    state = state,
+                    title = if (hasHome && pager.currentPage == 0) "Home" else {
+                        pages.getOrNull(pager.currentPage - homeOffset)?.title.orEmpty()
+                    },
+                    clock = clock,
+                    compact = compact,
+                    onDisconnect = onDisconnect,
+                    onSupport = { supportOpen = true },
+                )
 
             if (pages.isEmpty()) {
                 EmptyState(Modifier.weight(1f))
             } else {
-                CompositionLocalProvider(LocalCompactLayout provides wide) {
+                CompositionLocalProvider(LocalCompactLayout provides compact) {
                     Box(Modifier.weight(1f)) {
                         HorizontalPager(
                             state = pager,
                             modifier = Modifier.fillMaxSize(),
                             pageSpacing = 0.dp,
-                            contentPadding = if (wide) {
-                                PaddingValues(vertical = 4.dp)
-                            } else {
-                                PaddingValues(vertical = 4.dp)
-                            },
+                            contentPadding = PaddingValues(vertical = 4.dp),
                         ) { index ->
                             if (hasHome && index == 0) {
                                 HomePage(pages = pages, onOpen = { moduleIndex -> select(moduleIndex + homeOffset) })
@@ -900,7 +854,7 @@ fun DeckScreen(
                                     page = pages[index - homeOffset],
                                     endpoint = state.endpoint,
                                     onAction = onAction,
-                                    compact = wide,
+                                    compact = compact,
                                 )
                             }
                         }
@@ -925,6 +879,7 @@ fun DeckScreen(
                         }
                     }
                 }
+            }
             }
         }
 
@@ -1326,6 +1281,167 @@ private fun SupportSheet(
     }
 }
 
+/**
+ * Landscape navigation: a slim rail instead of a tab strip. It gives every
+ * module a full touch target, keeps the page title off the content and scales
+ * from a small phone to a tablet.
+ */
+@Composable
+private fun ModuleRail(
+    pages: List<PageData>,
+    pager: PagerState,
+    offset: Int,
+    hasHome: Boolean,
+    compact: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    val palette = LocalPalette.current
+    val width = if (compact) 78.dp else 96.dp
+    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
+    val homeAccent = palette.monoAccent ?: Color(0xFF7CE7FF)
+    val activeIndex = pager.currentPage - offset
+
+    Column(
+        Modifier
+            .padding(start = 10.dp, top = 10.dp, bottom = 10.dp)
+            .width(width)
+            .fillMaxHeight()
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(palette.glassTop, palette.glassBottom)))
+            .border(1.dp, palette.borderMid, shape)
+            .padding(horizontal = 6.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Rounded.DesktopWindows,
+            contentDescription = null,
+            tint = homeAccent.copy(alpha = 0.9f),
+            modifier = Modifier.size(if (compact) 17.dp else 19.dp),
+        )
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+        if (hasHome) {
+            RailItem(
+                icon = Icons.Rounded.GridView,
+                label = "Home",
+                active = pager.currentPage == 0,
+                compact = compact,
+                accent = homeAccent,
+                onClick = { onSelect(0) },
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            pages.forEachIndexed { index, page ->
+                RailItem(
+                    icon = iconForModule(page.id),
+                    label = page.title,
+                    active = activeIndex == index,
+                    compact = compact,
+                    accent = hexColor(page.accent),
+                    onClick = { onSelect(index + offset) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RailItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    active: Boolean,
+    compact: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = if (compact) 50.dp else 58.dp)
+            .clip(RoundedCornerShape(if (compact) 12.dp else 14.dp))
+            .background(if (active) accent.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (active) accent else Faint,
+            modifier = Modifier.size(if (compact) 16.dp else 18.dp),
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            label,
+            color = if (active) Ink else Muted,
+            fontSize = if (compact) 8.5.sp else 9.5.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Slim top bar: status, clock and actions. The rail already names the page. */
+@Composable
+private fun DeckTopBar(
+    state: DeckState,
+    title: String,
+    clock: String,
+    compact: Boolean,
+    onDisconnect: () -> Unit,
+    onSupport: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(
+                start = if (compact) 14.dp else 18.dp,
+                end = 12.dp,
+                top = 4.dp,
+                bottom = 2.dp,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ConnectionStatus(state)
+        if (!compact && title.isNotBlank()) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                title.uppercase(),
+                color = Faint,
+                fontSize = 9.5.sp,
+                letterSpacing = 1.6.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 220.dp),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            clock,
+            color = Muted,
+            fontSize = if (compact) 10.sp else 11.sp,
+            letterSpacing = 0.8.sp,
+        )
+        Spacer(Modifier.width(4.dp))
+        HeaderIconChip(
+            Icons.Rounded.PowerSettingsNew,
+            Color(0xFFFFA3B8),
+            "Disconnect",
+            onDisconnect,
+        )
+        HeaderChip("\u2665", onClick = onSupport)
+    }
+}
+
 /** Tab-style module switcher, mirroring the swipe position. */
 @Composable
 private fun ModuleTabs(
@@ -1402,30 +1518,38 @@ private fun HomeTab(active: Boolean, onClick: () -> Unit) {
 /** Module tiles with their live value — sized to fit the panel, no scrolling. */
 @Composable
 private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
+    val compact = LocalCompactLayout.current
     Column(
         Modifier
             .fillMaxSize()
-            .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 10.dp),
+            .padding(
+                start = if (compact) 18.dp else 24.dp,
+                end = if (compact) 18.dp else 24.dp,
+                top = if (compact) 4.dp else 8.dp,
+                bottom = if (compact) 10.dp else 16.dp,
+            ),
     ) {
         Text(
             "YOUR DESK, AT A GLANCE",
             color = Faint,
-            fontSize = 8.5.sp,
-            letterSpacing = 2.sp,
+            fontSize = if (compact) 8.5.sp else 9.5.sp,
+            letterSpacing = 2.2.sp,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
         Text(
             "Everything in reach.",
             color = Ink,
-            fontSize = 19.sp,
+            fontSize = if (compact) 19.sp else 26.sp,
             fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.4).sp,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
 
         // Work the grid out from the space actually available. Tiles keep a
         // sane height instead of stretching: with one or two modules the grid
         // would otherwise become two full-height slabs.
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            val roomy = maxWidth >= 900.dp
             val count = pages.size.coerceAtLeast(1)
             // Up to four modules sit in one calm row. From five upwards the
             // grid uses two rows, which keeps the tiles from becoming slabs.
@@ -1435,23 +1559,23 @@ private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
                 ((count + 1) / 2).coerceIn(3, 6)
             }
             val rows = ((count + columns - 1) / columns).coerceAtLeast(1)
-            val gap = if (rows > 2) 7.dp else 9.dp
-            val compact = rows > 2
+            val gap = if (rows > 2) 7.dp else if (roomy) 12.dp else 9.dp
+            val compactTile = !roomy || rows > 2
 
             val naturalRowHeight = (maxHeight - gap * (rows - 1)) / rows
             val rowHeight = minOf(
                 naturalRowHeight,
                 when {
-                    rows > 1 -> 260.dp
-                    count == 1 -> 220.dp
-                    else -> 200.dp
+                    rows > 1 -> if (roomy) 300.dp else 260.dp
+                    count == 1 -> if (roomy) 240.dp else 220.dp
+                    else -> if (roomy) 230.dp else 200.dp
                 },
             )
             val rawTileWidth = (maxWidth - gap * (columns - 1)) / columns
             val tileWidth = when (count) {
-                1 -> minOf(rawTileWidth, 520.dp)
-                2 -> minOf(rawTileWidth, 380.dp)
-                3 -> minOf(rawTileWidth, 340.dp)
+                1 -> minOf(rawTileWidth, if (roomy) 560.dp else 520.dp)
+                2 -> minOf(rawTileWidth, if (roomy) 420.dp else 380.dp)
+                3 -> minOf(rawTileWidth, if (roomy) 380.dp else 340.dp)
                 else -> rawTileWidth
             }
 
@@ -1468,7 +1592,7 @@ private fun HomePage(pages: List<PageData>, onOpen: (Int) -> Unit) {
                         for (index in start until end) {
                             ModuleTile(
                                 page = pages[index],
-                                compact = compact,
+                                compact = compactTile,
                                 modifier = Modifier.width(tileWidth).fillMaxHeight(),
                                 onClick = { onOpen(index) },
                             )
@@ -1496,7 +1620,7 @@ private fun ModuleTile(
     onClick: () -> Unit,
 ) {
     val accent = hexColor(page.accent)
-    val shape = RoundedCornerShape(if (compact) 16.dp else 20.dp)
+    val shape = RoundedCornerShape(if (compact) 16.dp else 22.dp)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val flash = rememberTapFlash(pressed)
@@ -1515,31 +1639,31 @@ private fun ModuleTile(
             .border(1.dp, Color(0x22FFFFFF), shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(
-                horizontal = if (compact) 11.dp else 13.dp,
-                vertical = if (compact) 9.dp else 12.dp,
+                horizontal = if (compact) 11.dp else 15.dp,
+                vertical = if (compact) 9.dp else 14.dp,
             ),
     ) {
         Icon(
             imageVector = iconForModule(page.id),
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.size(if (compact) 14.dp else 17.dp),
+            modifier = Modifier.size(if (compact) 14.dp else 19.dp),
         )
         Spacer(Modifier.weight(1f))
         Text(
             page.title,
             color = Ink,
-            fontSize = if (compact) 11.5.sp else 13.sp,
+            fontSize = if (compact) 11.5.sp else 14.5.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
         Text(
             moduleSummary(page),
             color = Muted,
-            fontSize = if (compact) 9.5.sp else 10.5.sp,
-            lineHeight = if (compact) 12.sp else 13.sp,
+            fontSize = if (compact) 9.5.sp else 11.5.sp,
+            lineHeight = if (compact) 12.sp else 14.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1660,13 +1784,19 @@ private fun HeaderChip(label: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Box(
         Modifier
-            .clip(shape)
-            .background(Color(0x14FFFFFF))
-            .border(1.dp, Color(0x1FFFFFFF), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .height(44.dp)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Muted, fontSize = 9.5.sp)
+        Box(
+            Modifier
+                .clip(shape)
+                .background(Color(0x14FFFFFF))
+                .border(1.dp, Color(0x1FFFFFFF), shape)
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Text(label, color = Muted, fontSize = 10.sp)
+        }
     }
 }
 
@@ -1708,7 +1838,7 @@ private fun ConnectionStatus(state: DeckState) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .size(5.dp)
+                .size(6.dp)
                 .clip(CircleShape)
                 .background(
                     when (state.status) {
@@ -1718,15 +1848,15 @@ private fun ConnectionStatus(state: DeckState) {
                     }
                 )
         )
-        Spacer(Modifier.width(5.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
             when (state.status) {
                 ConnStatus.CONNECTED -> state.serverName
                 ConnStatus.RECONNECTING -> "Reconnecting…"
                 else -> "Offline"
             },
-            color = Ink.copy(alpha = 0.8f),
-            fontSize = 9.5.sp,
+            color = Ink.copy(alpha = 0.82f),
+            fontSize = 10.sp,
             maxLines = 1,
         )
     }
