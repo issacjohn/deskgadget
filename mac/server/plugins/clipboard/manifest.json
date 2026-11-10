@@ -1,0 +1,11 @@
+{
+  "id": "clipboard",
+  "name": "Clipboard",
+  "version": "1.0.0",
+  "author": "DeskGadget",
+  "description": "See what is on the Mac clipboard and send text back to it from the phone.",
+  "accent": "#C4B5FF",
+  "interval": 4.0,
+  "default_enabled": false,
+  "settings": {}
+}

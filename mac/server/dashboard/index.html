@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="liquid">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#05070C" />
+<title>DeskGadget</title>
+<style>
+  :root{
+    --tint:255,255,255;
+    --bg:#05070C;
+    --ink:#EAEFF7; --muted:#93A0B5; --faint:#74839A; --line:rgba(var(--tint),.11);
+    --accent:#7CE7FF; --on-accent:#06121A; --logo-ink:#05070C;
+    --primary-a:#7CE7FF; --primary-b:#B69CFF;
+    --chip-ink:#CFE0EF; --h2-ink:#B6C5D8;
+    --field:rgba(8,12,20,.55); --menu:rgba(12,16,24,.98); --scrim:rgba(3,6,12,.66);
+    --vignette:rgba(3,5,10,.72); --knob:#C9D4E4;
+    --glass-a:rgba(var(--tint),.10); --glass-b:rgba(var(--tint),.035);
+    --shadow:0 24px 60px -28px rgba(0,0,0,.85);
+    --blob1:#5B4BFF; --blob2:#00D6C6; --blob3:#FF3D8B; --blob4:#2C6BFF;
+    --blob-opacity:.55; --blob-blur:90px; --blob-blend:screen;
+    color-scheme:dark;
+  }
+
+  /* ---------- themes (mirrors the Android palettes) ---------- */
+  html[data-theme="liquid"]{--tint:255,255,255;--bg:#05070C}
+  html[data-theme="glass"]{
+    --tint:255,255,255;--bg:#090D14;--line:rgba(var(--tint),.16);
+    --glass-a:rgba(var(--tint),.16);--glass-b:rgba(var(--tint),.07);
+    --blob1:#6C8BFF;--blob2:#6FE7FF;--blob3:#BFD0E8;--blob4:#5FF0C8;
+    --blob-opacity:.42;--blob-blur:120px;
+  }
+  html[data-theme="black"]{
+    --tint:255,255,255;--bg:#000;--line:rgba(var(--tint),.14);
+    --glass-a:rgba(var(--tint),.075);--glass-b:rgba(var(--tint),.03);
+    --vignette:transparent;--blob-opacity:0;--ink:#fff;--muted:#AEB5C2;--faint:#7C8496;
+    --shadow:0 26px 60px -30px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.02);
+  }
+  html[data-theme="graphite"]{
+    --tint:255,255,255;--bg:#07080B;--accent:#C9D4E4;
+    --blob1:#8FA0B8;--blob2:#3A4557;--blob3:#5A6474;--blob4:#3A4557;
+    --blob-opacity:.22;
+  }
+  html[data-theme="aurora"]{
+    --tint:255,255,255;--bg:#04100C;--accent:#5FF0C8;
+    --blob1:#10B981;--blob2:#22D3EE;--blob3:#A3E635;--blob4:#0E9F8A;
+    --blob-opacity:.45;
+  }
+  html[data-theme="white"]{
+    --tint:15,23,36;--bg:#EEF2F8;
+    --ink:#0D1524;--muted:#4E5A70;--faint:#7C879B;
+    --line:rgba(15,23,36,.13);--accent:#0A7EA4;--on-accent:#06121A;
+    --logo-ink:#05070C;--chip-ink:#26324A;--h2-ink:#3C4A63;
+    --field:rgba(255,255,255,.72);--menu:rgba(255,255,255,.98);
+    --scrim:rgba(20,26,38,.38);--vignette:rgba(255,255,255,.30);
+    --knob:#FFFFFF;
+    --glass-a:rgba(255,255,255,.72);--glass-b:rgba(255,255,255,.42);
+    --shadow:0 22px 50px -30px rgba(24,40,70,.35);
+    --blob1:#9FB7FF;--blob2:#7FE3EE;--blob3:#CBB8FF;--blob4:#A5C8FF;
+    --blob-opacity:.5;--blob-blur:110px;--blob-blend:multiply;
+    color-scheme:light;
+  }
+  html[data-theme="sunset"]{
+    --tint:255,255,255;--bg:#150810;--accent:#FFB07A;
+    --primary-a:#FFB07A;--primary-b:#FF6B9D;
+    --blob1:#FF7A45;--blob2:#FF3D7F;--blob3:#FFC371;--blob4:#7A3BFF;
+    --blob-opacity:.5;--blob-blur:100px;
+  }
+  html[data-theme="ocean"]{
+    --tint:255,255,255;--bg:#03101A;--accent:#4CC9FF;
+    --primary-a:#5FE0FF;--primary-b:#4C8DFF;
+    --blob1:#1D7BFF;--blob2:#00D6C6;--blob3:#0A3B6B;--blob4:#4CC9FF;
+    --blob-opacity:.48;--blob-blur:100px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif;
+    background:var(--bg); color:var(--ink); overflow-x:hidden; font-size:14px;
+    transition:background .3s,color .3s;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:rgba(124,231,255,.28)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgba(var(--tint),.14);border-radius:99px}
+  ::-webkit-scrollbar-track{background:transparent}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  /* ---------- liquid background ---------- */
+  .bg{position:fixed; inset:-20%; z-index:-2; filter:saturate(130%)}
+  .bg span{position:absolute; border-radius:50%; filter:blur(var(--blob-blur)); opacity:var(--blob-opacity);
+    mix-blend-mode:var(--blob-blend); transition:opacity .4s,filter .4s}
+  .b1{width:52vw;height:52vw;left:-6vw;top:-8vw;background:radial-gradient(circle at 30% 30%,var(--blob1),transparent 72%);animation:drift1 26s ease-in-out infinite}
+  .b2{width:46vw;height:46vw;right:-4vw;top:4vw;background:radial-gradient(circle at 60% 40%,var(--blob2),transparent 72%);animation:drift2 32s ease-in-out infinite}
+  .b3{width:40vw;height:40vw;left:22vw;bottom:-14vw;background:radial-gradient(circle at 50% 50%,var(--blob3),transparent 72%);animation:drift3 29s ease-in-out infinite}
+  .b4{width:34vw;height:34vw;right:14vw;bottom:-6vw;background:radial-gradient(circle at 50% 50%,var(--blob4),transparent 74%);animation:drift1 35s ease-in-out infinite reverse}
+  @keyframes drift1{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(6vw,4vh,0) scale(1.12)}}
+  @keyframes drift2{0%,100%{transform:translate3d(0,0,0) scale(1.05)}50%{transform:translate3d(-5vw,6vh,0) scale(.94)}}
+  @keyframes drift3{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(4vw,-5vh,0) scale(1.1)}}
+  .vignette{position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 0%,transparent 30%,var(--vignette) 100%)}
+
+  /* ---------- glass primitives ---------- */
+  .glass{
+    position:relative; background:linear-gradient(145deg,var(--glass-a),var(--glass-b));
+    border:1px solid var(--line); border-radius:26px;
+    backdrop-filter:blur(34px) saturate(180%); -webkit-backdrop-filter:blur(34px) saturate(180%);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(var(--tint),.16);
+  }
+  .glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(120deg,rgba(var(--tint),.16),transparent 28%,transparent 72%,rgba(var(--tint),.05));
+    -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+    -webkit-mask-composite:xor;mask-composite:exclude;padding:1px}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 70px}
+  header.top{display:flex;align-items:center;gap:18px;padding:18px 22px;margin-bottom:22px}
+  .logo{width:52px;height:52px;border-radius:17px;display:grid;place-items:center;font-size:24px;
+    background:conic-gradient(from 210deg,#7CE7FF,#B69CFF,#FF7AB6,#7CE7FF);
+    color:var(--logo-ink);box-shadow:0 10px 30px -8px rgba(124,231,255,.6)}
+  header.top h1{margin:0;font-size:22px;letter-spacing:.16em;font-weight:650}
+  header.top p{margin:3px 0 0;font-size:13.5px;color:var(--muted);letter-spacing:.02em}
+  .spacer{flex:1}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;
+    font-size:12.5px;color:var(--chip-ink);background:rgba(var(--tint),.06);border:1px solid var(--line)}
+  .dot{width:7px;height:7px;border-radius:50%;background:#5BE49B;box-shadow:0 0 10px #5BE49B}
+  .dot.off{background:#6B7488;box-shadow:none}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  section.card{padding:24px 24px 22px}
+  section.card h2{margin:0 0 4px;font-size:13px;letter-spacing:.18em;color:var(--h2-ink);font-weight:600;
+    display:flex;align-items:center;gap:9px}
+  .badge{font-size:11px;letter-spacing:.04em;background:linear-gradient(135deg,var(--primary-a),var(--primary-b));
+    padding:2px 8px;border-radius:99px;font-weight:700;color:var(--on-accent)}
+  .hint{font-size:13.5px;color:var(--muted);margin:0 0 16px;line-height:1.55}
+  .updatebar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
+  .updatebar .hint{margin:0}
+  .updbeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
+  .updbar{height:8px;border-radius:99px;background:rgba(var(--tint),.09);overflow:hidden}
+  .updbar>i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,#7CE7FF,#B69CFF);transition:width .25s ease}
+
+  /* ---------- devices ---------- */
+  .device{padding:14px 0;border-top:1px solid var(--line)}
+  .device:first-of-type{border-top:0}
+  .devhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .devname{font-weight:600;font-size:14.5px}
+  .devsub{font-size:12.5px;color:var(--muted)}
+  .modrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:14px;background:rgba(var(--tint),.03);margin-bottom:6px;
+    transition:background .16s,border-color .16s;border:1px solid transparent}
+  .modrow:hover{background:rgba(var(--tint),.06);border-color:rgba(var(--tint),.08)}
+  .modrow .nm{flex:1;font-size:14px}
+  .modrow .nm small{display:block;color:var(--muted);font-size:11.5px}
+  .arrows{display:flex;gap:4px}
+  .arrows button{width:26px;height:26px;border-radius:8px}
+  .modrow.dragging{opacity:.4}
+  .grip{color:var(--faint);cursor:grab;font-size:13px;letter-spacing:-1px;user-select:none}
+  .modrow.drop-before{box-shadow:0 -2px 0 0 #7CE7FF}
+  .modrow.drop-after{box-shadow:0 2px 0 0 #7CE7FF}
+
+  .themerow{display:flex;gap:6px;margin:8px 0 10px;flex-wrap:wrap;align-items:center}
+  .themerow .lbl{font-size:10.5px;letter-spacing:.14em;color:var(--faint);margin-right:2px}
+  .tbtn{font-size:11.5px;padding:5px 11px;border-radius:999px;background:rgba(var(--tint),.05);
+    border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.18s}
+  .tbtn:hover{background:rgba(var(--tint),.1)}
+  .tbtn.on{color:var(--on-accent);background:linear-gradient(135deg,var(--primary-a),var(--primary-b));border-color:transparent;font-weight:650}
+
+  /* multi-select dropdown */
+  .ms{position:relative}
+  .ms-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 12px;border-radius:12px;background:var(--field);border:1px solid var(--line);
+    color:var(--ink);font-size:13px;text-align:left;cursor:pointer}
+  .ms-btn i{font-style:normal;color:var(--faint);font-size:10px}
+  .ms.open .ms-btn{border-color:rgba(124,231,255,.6);box-shadow:0 0 0 3px rgba(124,231,255,.12)}
+  .ms-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;
+    max-height:230px;overflow:auto;padding:8px;border-radius:14px;
+    background:var(--menu);border:1px solid var(--line);
+    box-shadow:0 24px 50px -24px #000}
+  .ms.open .ms-menu{display:block}
+  .ms-opt{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;
+    font-size:12.5px;color:var(--ink);cursor:pointer}
+  .ms-opt:hover{background:rgba(var(--tint),.06)}
+  .ms-opt input{accent-color:#7CE7FF;width:14px;height:14px}
+
+  /* ---------- controls ---------- */
+  button{font-family:inherit;cursor:pointer;color:var(--ink);background:rgba(var(--tint),.07);
+    border:1px solid var(--line);border-radius:12px;padding:9px 14px;font-size:13px;transition:.18s}
+  button:hover{background:rgba(var(--tint),.13);transform:translateY(-1px)}
+  button.ghost{background:transparent}
+  button.danger{color:#FF8CA8;border-color:rgba(255,90,130,.28)}
+  button.primary{background:linear-gradient(135deg,var(--primary-a),var(--primary-b));color:var(--on-accent);font-weight:650;border:none;
+    box-shadow:0 12px 30px -12px rgba(124,231,255,.7)}
+  input[type=text],input[type=number],select{
+    width:100%;padding:10px 12px;border-radius:12px;background:var(--field);
+    border:1px solid var(--line);color:var(--ink);font-family:inherit;font-size:13px;outline:none}
+  input:focus,select:focus{border-color:rgba(124,231,255,.6);box-shadow:0 0 0 3px rgba(124,231,255,.12)}
+  label.field{display:block;margin-bottom:12px}
+  label.field>span{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px;letter-spacing:.06em}
+
+  /* toggle */
+  .sw{position:relative;width:44px;height:26px;border-radius:999px;background:rgba(var(--tint),.12);
+      border:1px solid var(--line);flex:0 0 auto;transition:.2s;cursor:pointer}
+  .sw::before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+      background:var(--knob);box-shadow:0 1px 4px rgba(0,0,0,.35);transition:.22s cubic-bezier(.3,1.4,.5,1)}
+  .sw.on{background:linear-gradient(135deg,var(--primary-a),var(--primary-b))}
+  .sw.on::before{left:22px;background:#04121A}
+
+  /* module cards */
+  .module{padding:16px;border-radius:18px;background:rgba(var(--tint),.035);border:1px solid var(--line);margin-bottom:10px;
+    transition:background .16s,border-color .16s}
+  .module:hover{background:rgba(var(--tint),.05);border-color:rgba(var(--tint),.12)}
+  .mhead{display:flex;align-items:center;gap:12px;cursor:pointer;border-radius:10px}
+  .accent{width:10px;height:10px;border-radius:50%;box-shadow:0 0 12px currentColor;flex:0 0 auto}
+  .mname{font-size:15px;font-weight:600;line-height:1.2}
+  .mmeta{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .mbody{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:none}
+  .module.open .mbody{display:block}
+  .expander{background:rgba(var(--tint),.05);border:1px solid var(--line);color:var(--muted);
+    width:28px;height:28px;padding:0;display:grid;place-items:center;font-size:12px;
+    transition:transform .2s,background .16s}
+  .expander:hover{background:rgba(var(--tint),.11)}
+  .module.open .expander{transform:rotate(180deg)}
+  .expander.bin{color:var(--muted)}
+  .expander.bin:hover{color:#FF8CA8;background:rgba(255,90,130,.12);border-color:rgba(255,90,130,.3)}
+
+  /* shortcuts editor */
+  .sc{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;background:rgba(var(--tint),.04);margin-bottom:8px}
+  .sc img{width:30px;height:30px;border-radius:8px;background:rgba(var(--tint),.08);object-fit:contain}
+  .sc .sc-main{flex:1;min-width:0}
+  .sc .sc-label{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc .sc-path{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* picker modal */
+  .modal{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(8px);display:none;
+    align-items:center;justify-content:center;padding:24px;z-index:50}
+  .modal.show{display:flex}
+  .modal .sheet{width:min(560px,100%);max-height:72vh;display:flex;flex-direction:column;padding:18px}
+  .applist{overflow:auto;margin-top:12px;padding-right:4px}
+  .approw{display:flex;align-items:center;gap:11px;padding:9px;border-radius:12px;cursor:pointer}
+  .approw:hover{background:rgba(var(--tint),.07)}
+  .approw img{width:26px;height:26px;object-fit:contain}
+  .approw .nm{font-size:13px}
+
+  /* module catalogue */
+  .catrow{display:flex;align-items:center;gap:11px;padding:10px 0;
+    border-bottom:1px solid rgba(var(--tint),.06)}
+  .catrow:last-child{border-bottom:none}
+  .catdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .catmain{flex:1;min-width:0}
+  .cattitle{font-size:13px;color:var(--ink)}
+  .catver{font-size:10px;color:var(--muted);margin-left:4px}
+  .catsub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .coretag{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--faint);
+    border:1px solid rgba(var(--tint),.12);border-radius:99px;padding:3px 8px}
+
+  /* drop zone */
+  .drop{border:1.5px dashed rgba(var(--tint),.22);border-radius:18px;padding:22px;text-align:center;
+    color:var(--muted);font-size:13.5px;transition:.2s;cursor:pointer}
+  .drop.hot{border-color:#7CE7FF;background:rgba(124,231,255,.07);color:#CFEFFF}
+  .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+  code{background:rgba(var(--tint),.07);padding:2px 6px;border-radius:6px;font-size:11.5px}
+
+  #toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,20px);opacity:0;transition:.3s;
+    padding:12px 20px;border-radius:14px;font-size:13px;pointer-events:none;z-index:60}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* module filter */
+  .filter{display:flex;align-items:center;gap:9px;margin:0 0 12px}
+  .filter input{flex:1;padding:10px 12px;border-radius:12px;background:var(--field);
+    border:1px solid var(--line);color:var(--ink);font-family:inherit;font-size:13px;outline:none}
+  .filter input:focus{border-color:rgba(124,231,255,.6);box-shadow:0 0 0 3px rgba(124,231,255,.12)}
+  .filter .count{font-size:12px;color:var(--faint);white-space:nowrap}
+
+  @media(prefers-reduced-motion:reduce){
+    *{animation-duration:.001s!important;animation-iteration-count:1!important;transition-duration:.001s!important}
+    .bg span{filter:none}
+  }
+  @media(max-width:560px){
+    .wrap{padding:16px 12px 48px}
+    header.top{flex-wrap:wrap;gap:12px;padding:16px}
+    header.top h1{font-size:19px}
+    .chips{width:100%;justify-content:flex-start}
+    section.card{padding:18px}
+  }
+</style>
+</head>
+<body>
+<div class="bg"><span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span></div>
+<div class="vignette"></div>
+
+<div class="wrap">
+  <header class="top glass">
+    <div class="logo">◈</div>
+    <div>
+      <h1>DeskGadget</h1>
+      <p id="srvline">starting…</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="chips">
+      <span class="chip" id="usbchip"><i class="dot off"></i> USB</span>
+      <span class="chip" id="addrchip">—</span>
+      <span class="chip" id="verchip">v1.0.0</span>
+      <span class="chip" id="livechip">live</span>
+    </div>
+  </header>
+
+  <div class="updatebar glass" id="updatebar">
+    <span class="chip" id="updver">v—</span>
+    <span class="hint" id="updstatus" style="margin:0">Checking for updates…</span>
+    <div class="spacer"></div>
+    <button class="ghost" id="updcheck">Check for updates</button>
+    <label class="updbeta"><input type="checkbox" id="updbeta" /> Beta builds</label>
+  </div>
+
+  <div class="grid" style="margin-top:16px">
+    <section class="card glass">
+      <h2>DEVICES <span class="badge" id="devcount">0</span></h2>
+      <p class="hint">Tick the modules each phone should show. Order controls swipe order.</p>
+      <div id="devices"><p class="hint">No devices paired yet — open the app on your phone.</p></div>
+    </section>
+
+    <section class="card glass">
+      <h2>MODULES <span class="badge" id="modcount">0</span></h2>
+      <p class="hint">Installed on this Mac. Toggle, configure, or add your own.</p>
+      <div class="filter">
+        <input id="modsearch" type="search" placeholder="Search modules by name or author…" autocomplete="off" />
+        <span class="count" id="modshown"></span>
+      </div>
+      <div class="row" style="margin:0 0 14px">
+        <button class="primary" onclick="openCatalog()">Add or remove modules</button>
+        <button class="ghost" id="rescan">Rescan plugins</button>
+      </div>
+      <div id="modules"></div>
+      <div class="drop" id="drop">
+        <div>Drop a module <code>.zip</code> here to install</div>
+        <div style="margin-top:6px;font-size:11.5px">or <span style="color:var(--accent);text-decoration:underline">browse files</span></div>
+        <input type="file" id="file" accept=".zip" hidden />
+      </div>
+      <div class="row">
+        <button class="ghost" onclick="location.href='/api/template'">Download starter module</button>
+        <button class="ghost" onclick="window.open('/docs/plugins','_blank')">Module guide</button>
+      </div>
+    </section>
+
+    <section class="card glass" id="macsetup" style="display:none;grid-column:1/-1">
+      <h2>MAC SETUP <span class="badge" id="macosver">—</span></h2>
+      <p class="hint">DeskGadget asks macOS for these itself. If a switch is still off, use Enable and flip it for <b>DeskGadget</b>.</p>
+      <p class="hint" style="margin:6px 0 0">Not in the list? <a href="#" onclick="macReveal();return false">Show DeskGadget in Finder</a> and drag it into the list.</p>
+      <div id="macrows"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" onclick="macEnableAll()">Enable permissions</button>
+        <button class="ghost" onclick="macRecheck()">Re-check</button>
+        <button class="ghost" onclick="macTest()">Test Automation</button>
+      </div>
+      <p class="hint" id="machint" style="margin-top:10px"></p>
+    </section>
+  </div>
+</div>
+
+<div class="modal" id="updModal">
+  <div class="sheet glass" style="max-width:540px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px" id="updtitle">Update DeskGadget</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="updlater">Later</button>
+    </div>
+    <div id="updnotes" style="white-space:pre-wrap;font-size:12px;line-height:1.6;color:var(--muted);max-height:220px;overflow:auto;margin:12px 0"></div>
+    <div id="updprogresswrap" hidden>
+      <div class="updbar"><i id="updbar"></i></div>
+      <p class="hint" id="updprogress" style="margin:8px 0 0"></p>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="updgo" disabled>Downloading…</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet glass">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px">Pick an app</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="mclose">Close</button>
+    </div>
+    <input type="text" id="search" placeholder="Search installed apps…" style="margin-top:12px" />
+    <div class="applist" id="applist"></div>
+  </div>
+</div>
+
+<div class="modal" id="catalogModal">
+  <div class="sheet glass" style="max-width:560px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <strong style="font-size:14px">Add or remove modules</strong>
+      <div class="spacer"></div>
+      <button class="ghost" id="catclose">Close</button>
+    </div>
+    <p class="hint" id="catnote" style="margin:8px 0 4px"></p>
+    <div id="catlist" class="applist"></div>
+  </div>
+</div>
+
+<div class="modal" id="askModal">
+  <div class="sheet glass" style="max-width:380px;gap:12px">
+    <strong id="askTitle" style="font-size:14px"></strong>
+    <div id="askBody" class="hint" style="margin:0;line-height:1.55"></div>
+    <input id="askInput" type="text" hidden />
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">
+      <button class="ghost" id="askCancel">Cancel</button>
+      <button class="primary" id="askOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="glass"></div>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+let state = null, apps = [], editing = false, openModules = new Set();
+
+function toast(text){
+  const t = $('#toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(window._tt); window._tt = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* The dashboard paints itself with the same palette as the phone, so picking
+   a theme on the server changes both sides instead of only the app. */
+const THEME_BG = { liquid:'#05070C', glass:'#090D14', black:'#000000', white:'#EEF2F8',
+                   graphite:'#07080B', aurora:'#04100C',
+                   sunset:'#150810', ocean:'#03101A' };
+function applyTheme(theme){
+  if(!theme || !(theme in THEME_BG)) return;
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name=theme-color]');
+  if(meta) meta.content = THEME_BG[theme];
+  document.querySelectorAll('.tbtn[data-theme]').forEach(b=>b.classList.toggle('on', b.dataset.theme === theme));
+  try { localStorage.setItem('deskgadget.theme', theme); } catch(e){}
+}
+function savedTheme(){
+  try { return localStorage.getItem('deskgadget.theme'); } catch(e){ return null; }
+}
+applyTheme(savedTheme() || 'liquid');
+async function api(path, body, method){
+  const res = await fetch(path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: body ? {'Content-Type':'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) toast(data.error || 'Request failed');
+  return data;
+}
+
+/* ---------------- render ---------------- */
+function render(){
+  if(!state) return;
+  const s = state.server;
+  $('#srvline').textContent = `${s.name} · serving ${state.devices.length ? state.devices.length + ' device(s)' : 'waiting for a phone'}`;
+  $('#addrchip').textContent = `${s.ip}:${s.port}`;
+  $('#verchip').textContent = 'v' + s.version;
+  const usb = $('#usbchip');
+  usb.innerHTML = `<i class="dot ${s.usb.available && s.usb.devices.length ? '' : 'off'}"></i> ` +
+    (s.usb.devices.length ? 'USB ' + s.usb.devices.length : (s.usb.available ? 'USB idle' : 'no adb'));
+
+  const dc = $('#devcount'); if(dc) dc.textContent = state.devices.length;
+  const mc = $('#modcount'); if(mc) mc.textContent = state.modules.length;
+  const ub = $('#updatebar');
+  if(ub) ub.style.display = (s.platform === 'mac') ? 'none' : '';
+  renderDevices();
+  renderModules();
+  macRefresh(false);
+  if(!savedTheme() && state.devices.length) applyTheme(state.devices[0].theme || 'liquid');
+}
+
+/* ---------------- macOS setup ---------------- */
+let macLoaded = false;
+function macDot(value){
+  const cls = value === true ? '' : 'off';
+  return `<i class="dot ${cls}"></i>`;
+}
+function macWord(value){
+  if(value === true) return 'allowed';
+  if(value === false) return 'blocked';
+  return 'not tested';
+}
+async function macRefresh(force){
+  if(!state || state.server.platform !== 'mac') return;
+  if(macLoaded && !force) return;
+  macLoaded = true;
+  const s = await api('/api/mac/status' + (force ? '?probe=1' : ''));
+  if(!s || s.supported === false) return;
+  const card = $('#macsetup');
+  card.style.display = '';
+  $('#macosver').textContent = `macOS ${s.macos} · ${s.arch}`;
+  const perm = s.permissions || {};
+  const rows = [
+    ['accessibility', 'Accessibility', 'Window switcher, touchpad, lock and desktop keys', perm.accessibility],
+    ['screen_recording', 'Screen Recording', 'Screenshots from the System page', perm.screen_recording],
+    ['automation', 'Automation', 'Media control, volume fallback, hiding apps', perm.automation],
+  ];
+  const tools = s.tools || {};
+  const extra = [
+    ['Applications', 'ADB for USB mode', s.adb_path ? 'ready' : 'not found', !!s.adb_path],
+    ['Virtual camera', 'OBS Virtual Camera', s.virtual_camera ? 'detected' : 'not installed', !!s.virtual_camera],
+    ['Python', 'pyobjc (native helpers)', (s.pyobjc && s.pyobjc.quartz) ? 'installed' : 'missing — AppleScript fallback', !!(s.pyobjc && s.pyobjc.quartz)],
+  ];
+  const row = (title, sub, state, btn) => `
+    <div class="modrow" style="grid-template-columns:auto 1fr auto auto;gap:12px">
+      <span>${macDot(state)}</span>
+      <span class="nm">${esc(title)}<small>${esc(sub)}</small></span>
+      <span class="hint" style="margin:0">${esc(macWord(state))}</span>
+      ${btn}
+    </div>`;
+  const actionBtns = (pane) => `
+    <span style="display:flex;gap:6px">
+      <button class="ghost" onclick="macEnable('${pane}')">Enable</button>
+      <button class="ghost" onclick="macPane('${pane}')">Settings</button>
+    </span>`;
+  $('#macrows').innerHTML =
+    rows.map(([pane, title, sub, value]) => row(title, sub, value, value === true ? '' : actionBtns(pane))).join('') +
+    extra.map(([title, sub, text, ok]) => `
+      <div class="modrow" style="grid-template-columns:auto 1fr auto;gap:12px">
+        <span>${macDot(ok)}</span>
+        <span class="nm">${esc(title)}<small>${esc(sub)}</small></span>
+        <span class="hint" style="margin:0">${esc(text)}</span>
+      </div>`).join('');
+  $('#machint').textContent = s.virtual_camera_hint || '';
+  return s;
+}
+async function macEnable(kind){
+  toast('Check for the macOS dialog…');
+  await api('/api/mac/request', {kinds: [kind]});
+  setTimeout(()=>{ macLoaded = false; macRefresh(true); }, 2000);
+}
+async function macEnableAll(){
+  toast('Check for the macOS dialogs…');
+  await api('/api/mac/request', {});
+  setTimeout(()=>{ macLoaded = false; macRefresh(true); }, 3200);
+}
+async function macRecheck(){
+  macLoaded = false;
+  await macRefresh(false);
+  toast('Status refreshed');
+}
+async function macPane(pane){
+  const r = await api('/api/mac/open-settings', {pane});
+  toast(r && r.ok ? 'Opened System Settings' : 'Open System Settings → Privacy & Security');
+}
+async function macReveal(){
+  const r = await api('/api/mac/reveal', {});
+  toast(r && r.ok ? 'Drag DeskGadget into the list' : 'Open /Applications in Finder');
+}
+async function macTest(){
+  macLoaded = false;
+  const s = await macRefresh(true);
+  const a = s && s.permissions ? s.permissions.automation : null;
+  toast(a === true ? 'Automation is allowed' : a === false ? 'Automation is blocked — use Enable' : 'No answer from System Events');
+}
+
+/* Coming back from System Settings should update the card immediately. */
+window.addEventListener('focus', ()=>{
+  if(state && state.server.platform === 'mac'){
+    macLoaded = false;
+    macRefresh(false);
+  }
+});
+
+function renderDevices(){
+  const box = $('#devices');
+  if(!state.devices.length){
+    box.innerHTML = '<p class="hint">No devices paired yet — open the app on your phone and it will connect.</p>';
+    return;
+  }
+  box.innerHTML = state.devices.map(d=>{
+    // render in the order this device actually shows them, not module load order
+    const ordered = [...state.modules]
+      .map(m => ({ m, a: d.assignments[m.id] || { enabled: false, position: 100 } }))
+      .sort((x, y) => (x.a.position - y.a.position) || x.m.id.localeCompare(y.m.id));
+    const rows = ordered.map(({ m, a })=>`
+      <div class="modrow" draggable="true" data-dev="${d.id}" data-mod="${m.id}">
+        <span class="grip">⠿</span>
+        <span class="accent" style="color:${m.accent};background:${m.accent}"></span>
+        <span class="nm">${esc(m.name)}<small>${a.enabled?'shown':'hidden'}</small></span>
+        <div class="arrows">
+          <button class="ghost up" title="Move up">↑</button>
+          <button class="ghost down" title="Move down">↓</button>
+        </div>
+        <div class="sw ${a.enabled?'on':''}" data-toggle></div>
+      </div>`).join('');
+    return `<div class="device">
+      <div class="devhead">
+        <span class="dot ${d.online?'':'off'}"></span>
+        <div><div class="devname">${esc(d.name)}</div>
+        <div class="devsub">${d.online?'connected':(d.last_seen? 'last seen '+d.last_seen.replace('T',' ') : 'offline')}</div></div>
+        <div class="spacer"></div>
+        <button class="ghost rename">Rename</button>
+        <button class="ghost danger remove">Remove</button>
+      </div>
+      <div class="themerow">
+        <span class="lbl">THEME</span>
+        ${[['liquid','Liquid'],['glass','Full Glass'],['black','OLED Black'],['white','White'],['graphite','Graphite'],['aurora','Aurora'],['sunset','Sunset'],['ocean','Ocean']]
+          .map(([id,label])=>`<button class="tbtn ${(document.documentElement.dataset.theme||'liquid')===id?'on':''}" data-theme="${id}">${label}</button>`).join('')}
+      </div>
+      <div class="themerow">
+        <span class="lbl">SCREEN</span>
+        <button class="tbtn ${d.keep_screen?'on':''}" data-keep="1">${d.keep_screen?'Keep awake: on':'Keep awake: off'}</button>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+let modFilter = '';
+function renderModules(){
+  const box = $('#modules');
+  const term = modFilter.trim().toLowerCase();
+  const shown = state.modules.filter(m => !term
+    || m.name.toLowerCase().includes(term)
+    || m.id.toLowerCase().includes(term)
+    || (m.author||'').toLowerCase().includes(term)
+    || (m.description||'').toLowerCase().includes(term));
+  const counter = $('#modshown');
+  if(counter) counter.textContent = term ? `${shown.length} of ${state.modules.length}` : `${state.modules.length} installed`;
+  box.innerHTML = shown.map(m=>{
+    const fields = Object.entries(m.settings_schema || {}).map(([key, f])=>fieldHtml(m, key, f)).join('');
+    return `<div class="module ${openModules.has(m.id)?'open':''}" data-mod="${m.id}">
+      <div class="mhead">
+        <span class="accent" style="color:${m.accent};background:${m.accent}"></span>
+        <div style="flex:1">
+          <div class="mname">${esc(m.name)}</div>
+          <div class="mmeta">v${esc(m.version)}${m.author?' · '+esc(m.author):''}</div>
+        </div>
+        <button class="expander" data-expand aria-label="Show settings">▾</button>
+        ${!['system','media'].includes(m.id) ? `<button class="expander bin" data-remove title="Remove module" aria-label="Remove ${esc(m.name)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>` : ''}
+        <div class="sw ${m.enabled?'on':''}" data-menabled title="Enable module"></div>
+      </div>
+      <div class="mbody">
+        ${m.description?`<p class="hint">${esc(m.description)}</p>`:''}
+        ${fields || '<p class="hint">No settings.</p>'}
+      </div>
+    </div>`;
+  }).join('') || `<p class="hint">${state.modules.length ? 'No modules match that search.' : 'No modules installed.'}</p>`;
+}
+
+function fieldHtml(m, key, f){
+  const val = m.settings[key] ?? f.default ?? '';
+  if(f.type === 'boolean'){
+    return `<div class="modrow" style="background:transparent;padding:4px 0">
+      <span class="nm">${esc(f.label||key)}</span>
+      <div class="sw ${val?'on':''}" data-field="${key}" data-kind="boolean"></div></div>`;
+  }
+  if(f.type === 'enum'){
+    const opts = (f.options||[]).map(o=>`<option ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('');
+    return `<label class="field"><span>${esc(f.label||key)}</span>
+      <select data-field="${key}" data-kind="enum">${opts}</select></label>`;
+  }
+  if(f.type === 'multienum'){
+    const cur = Array.isArray(val) ? val : (Array.isArray(f.default) ? f.default : []);
+    const summary = cur.length ? cur.join(', ') : 'Select topics…';
+    const opts = (f.options||[])
+      .map(o=>`<label class="ms-opt"><input type="checkbox" data-msopt="${key}" value="${esc(o)}" ${cur.includes(o)?'checked':''}/><span>${esc(o)}</span></label>`)
+      .join('');
+    return `<div class="field"><span>${esc(f.label||key)}</span>
+      <div class="ms" data-ms="${key}">
+        <button type="button" class="ms-btn"><span class="ms-label">${esc(summary)}</span><i>▾</i></button>
+        <div class="ms-menu">${opts}</div>
+      </div></div>`;
+  }
+  if(f.type === 'shortcuts') return shortcutsHtml(m, val);
+  const type = f.type === 'number' ? 'number' : 'text';
+  return `<label class="field"><span>${esc(f.label||key)}</span>
+    <input type="${type}" data-field="${key}" data-kind="${type}" value="${esc(val)}"
+      placeholder="${esc(f.placeholder||'')}" /></label>`;
+}
+
+function shortcutsHtml(m, items){
+  items = Array.isArray(items) ? items : [];
+  const rows = items.map((it,i)=>`
+    <div class="sc" data-i="${i}">
+      <img src="/icons/${it.icon||''}" onerror="this.style.opacity=.25" />
+      <div class="sc-main"><div class="sc-label">${esc(it.label || it.path.split('\\\\').pop())}</div>
+        <div class="sc-path">${esc(it.path)}</div></div>
+      <button class="ghost" data-pick="${i}">Change</button>
+      <button class="ghost danger" data-del="${i}">✕</button>
+    </div>`).join('');
+  return `<div data-shortcuts="${m.id}">
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;letter-spacing:.06em">SHORTCUTS</div>
+    ${rows || '<p class="hint">No shortcuts yet.</p>'}
+    <button class="ghost" data-add>+ Add shortcut</button>
+  </div>`;
+}
+
+/* ---------------- events ---------------- */
+document.addEventListener('focusin', e=>{ if(e.target.matches('input,select')) editing = true; });
+document.addEventListener('focusout', e=>{ if(e.target.matches('input,select')) setTimeout(()=>editing=false, 120); });
+
+$('#devices').addEventListener('click', async e=>{
+  const keepBtn = e.target.closest('[data-keep]');
+  if(keepBtn){
+    const devEl = keepBtn.closest('.device');
+    const idx = [...document.querySelectorAll('.device')].indexOf(devEl);
+    const d = state.devices[idx];
+    if(d){
+      await api(`/api/devices/${d.id}/screen`, { enabled: !d.keep_screen });
+      toast(!d.keep_screen ? 'Screen stays awake' : 'Screen sleeps normally');
+      refresh();
+    }
+    return;
+  }
+  const themeBtn = e.target.closest('.tbtn[data-theme]');
+  if(themeBtn){
+    const devEl = themeBtn.closest('.device');
+    const idx = [...document.querySelectorAll('.device')].indexOf(devEl);
+    const d = state.devices[idx];
+    if(d){
+      applyTheme(themeBtn.dataset.theme);
+      await api(`/api/devices/${d.id}/theme`, { theme: themeBtn.dataset.theme });
+      toast('Theme: ' + themeBtn.textContent);
+      refresh();
+    }
+    return;
+  }
+  const row = e.target.closest('.modrow');
+  if(!row) {
+    const dev = e.target.closest('.device'); if(!dev) return;
+    const id = [...document.querySelectorAll('.device')].indexOf(dev);
+    const d = state.devices[id];
+    if(e.target.classList.contains('rename')){
+      const name = await ask({
+        title: 'Rename this phone',
+        body: 'The name appears on the phone and in this dashboard.',
+        input: true,
+        value: d.name,
+        ok: 'Rename'
+      });
+      if(name && name.trim()){ await api(`/api/devices/${d.id}/rename`, {name: name.trim()}); refresh(); }
+    }
+    if(e.target.classList.contains('remove')){
+      if(await ask({
+        title: `Remove ${d.name}?`,
+        body: 'This forgets the phone here. It can be paired again later.',
+        ok: 'Remove',
+        danger: true
+      })){ await api(`/api/devices/${d.id}`, null, 'DELETE'); refresh(); }
+    }
+    return;
+  }
+  const devId = row.dataset.dev, modId = row.dataset.mod;
+  const d = state.devices.find(x=>x.id===devId);
+  const items = state.modules.map((m,idx)=>({
+    module: m.id,
+    enabled: !!(d.assignments[m.id]?.enabled),
+    position: d.assignments[m.id]?.position ?? 100+idx
+  }));
+  const target = items.find(i=>i.module===modId);
+
+  if(e.target.closest('[data-toggle]')){
+    target.enabled = !target.enabled;
+    await api('/api/assignments', {device_id: devId, items});
+    refresh();
+  } else if(e.target.closest('.up') || e.target.closest('.down')){
+    const sorted = [...items].sort((a,b)=> (a.position - b.position) || a.module.localeCompare(b.module));
+    const i = sorted.findIndex(x=>x.module===modId);
+    const j = e.target.closest('.up') ? i-1 : i+1;
+    if(j<0 || j>=sorted.length) return;
+    [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    sorted.forEach((it,idx)=>it.position = idx);
+    await api('/api/assignments', {device_id: devId, items: sorted});
+    refresh();
+  }
+});
+
+$('#modules').addEventListener('click', async e=>{
+  const card = e.target.closest('.module'); if(!card) return;
+  const id = card.dataset.mod;
+  const mod = state.modules.find(m=>m.id===id);
+
+  if(e.target.closest('[data-remove]')){
+    if(!(await ask({
+      title: `Remove ${mod.name}?`,
+      body: 'It moves to plugins_removed and can be installed again from the catalogue.',
+      ok: 'Remove',
+      danger: true
+    }))) return;
+    await api(`/api/modules/${id}/remove`, null, 'POST');
+    toast(mod.name + ' removed');
+    refresh(); return;
+  }
+  if(e.target.closest('[data-expand]') ||
+     (e.target.closest('.mhead') && !e.target.closest('[data-menabled]'))){
+    openModules.has(id) ? openModules.delete(id) : openModules.add(id);
+    card.classList.toggle('open'); return;
+  }
+  if(e.target.closest('[data-menabled]')){
+    await api(`/api/modules/${id}/enabled`, {enabled: !mod.enabled});
+    refresh(); return;
+  }
+  if(e.target.closest('.ms-btn')){
+    const ms = e.target.closest('.ms');
+    document.querySelectorAll('.ms.open').forEach(x=>{ if(x!==ms) x.classList.remove('open'); });
+    ms.classList.toggle('open');
+    return;
+  }
+  if(e.target.closest('[data-add]')){
+    openPicker(mod, -1); return;
+  }
+  if(e.target.closest('[data-pick]')){
+    openPicker(mod, +e.target.closest('[data-pick]').dataset.pick); return;
+  }
+  if(e.target.closest('[data-del]')){
+    const i = +e.target.closest('[data-del]').dataset.del;
+    const items = [...(mod.settings.items||[])]; items.splice(i,1);
+    await saveShortcuts(mod, items); return;
+  }
+  if(e.target.closest('.sw[data-field]')){
+    const sw = e.target.closest('.sw');
+    const items = {...mod.settings}; items[sw.dataset.field] = !sw.classList.contains('on');
+    await api(`/api/modules/${id}/settings`, items); refresh();
+  }
+});
+
+$('#modsearch').addEventListener('input', e=>{ modFilter = e.target.value; renderModules(); });
+
+$('#drop').addEventListener('click', ()=> $('#file').click());
+
+$('#modules').addEventListener('change', async e=>{
+  const opt = e.target.closest('input[data-msopt]');
+  if(opt){
+    const ms = opt.closest('.ms');
+    const key = opt.dataset.msopt;
+    const card = opt.closest('.module');
+    const id = card.dataset.mod;
+    const mod = state.modules.find(m=>m.id===id);
+    const values = [...ms.querySelectorAll('input[data-msopt]:checked')].map(i=>i.value);
+    const settings = {...mod.settings, [key]: values};
+    mod.settings = settings;
+    const label = ms.querySelector('.ms-label');
+    if(label) label.textContent = values.length ? values.join(', ') : 'Select topics…';
+    await api(`/api/modules/${id}/settings`, settings);
+    return;
+  }
+  const el = e.target.closest('[data-field]'); if(!el) return;
+  if(el.classList.contains('sw')) return;
+  const card = el.closest('.module'); const id = card.dataset.mod;
+  const mod = state.modules.find(m=>m.id===id);
+  const settings = {...mod.settings};
+  settings[el.dataset.field] = el.dataset.kind === 'number' ? Number(el.value) : el.value;
+  await api(`/api/modules/${id}/settings`, settings);
+  toast('Saved');
+});
+
+async function saveShortcuts(mod, items){
+  const settings = {...mod.settings, items};
+  await api(`/api/modules/${mod.id}/settings`, settings);
+  toast('Shortcuts updated');
+  refresh();
+}
+
+/* app picker */
+let pickTarget = null, pickIndex = -1;
+async function openPicker(mod, index){
+  pickTarget = mod; pickIndex = index;
+  if(!apps.length){
+    const r = await api('/api/apps'); apps = r.apps || [];
+  }
+  $('#modal').classList.add('show');
+  $('#search').value = ''; drawApps('');
+  setTimeout(()=>$('#search').focus(), 60);
+}
+function drawApps(q){
+  q = q.toLowerCase();
+  const list = apps.filter(a=>!q || a.name.toLowerCase().includes(q)).slice(0,120);
+  $('#applist').innerHTML = list.map((a,i)=>`<div class="approw" data-app="${esc(a.path)}" data-name="${esc(a.name)}">
+    <img src="/icons/${a.icon}" onerror="this.style.opacity=.2" />
+    <div class="nm">${esc(a.name)}</div></div>`).join('') || '<p class="hint">No matches.</p>';
+}
+$('#search').addEventListener('input', e=>drawApps(e.target.value));
+$('#applist').addEventListener('click', async e=>{
+  const row = e.target.closest('.approw'); if(!row) return;
+  const items = [...(pickTarget.settings.items||[])];
+  const entry = {id: 'sc-' + Math.random().toString(36).slice(2,8), label: row.dataset.name, path: row.dataset.app};
+  const app = apps.find(a=>a.path===row.dataset.app);
+  if(app) entry.icon = app.icon;
+  if(pickIndex >= 0) items[pickIndex] = {...items[pickIndex], ...entry, id: items[pickIndex].id || entry.id};
+  else items.push(entry);
+  $('#modal').classList.remove('show');
+  await saveShortcuts(pickTarget, items);
+});
+$('#mclose').onclick = ()=>$('#modal').classList.remove('show');
+$('#modal').onclick = e=>{ if(e.target.id==='modal') $('#modal').classList.remove('show'); };
+
+/* In-page confirm/prompt. WebView2 can suppress native confirm()/prompt(),
+   which made the module bin button look dead. This always works. */
+let askResolve = null;
+function ask(opts = {}) {
+  return new Promise(resolve => {
+    askResolve = resolve;
+    $('#askTitle').textContent = opts.title || 'Are you sure?';
+    const body = $('#askBody');
+    body.textContent = opts.body || '';
+    body.style.display = opts.body ? '' : 'none';
+    const input = $('#askInput');
+    input.hidden = !opts.input;
+    input.value = opts.value || '';
+    const ok = $('#askOk');
+    ok.textContent = opts.ok || 'OK';
+    ok.style.background = opts.danger ? 'linear-gradient(135deg,#FF8CA8,#FF5A82)' : '';
+    ok.style.color = opts.danger ? '#1A0A10' : '';
+    $('#askModal').classList.add('show');
+    setTimeout(() => (opts.input ? input : ok).focus(), 60);
+  });
+}
+function closeAsk(value) {
+  $('#askModal').classList.remove('show');
+  const resolve = askResolve;
+  askResolve = null;
+  if (resolve) resolve(value);
+}
+$('#askOk').onclick = () => closeAsk($('#askInput').hidden ? true : $('#askInput').value);
+$('#askCancel').onclick = () => closeAsk(null);
+$('#askModal').onclick = e => { if (e.target.id === 'askModal') closeAsk(null); };
+document.addEventListener('keydown', e => {
+  if (!$('#askModal').classList.contains('show')) return;
+  if (e.key === 'Enter') { e.preventDefault(); $('#askOk').click(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeAsk(null); }
+});
+
+/* upload / rescan */
+const drop = $('#drop'), file = $('#file');
+drop.onclick = ()=>file.click();
+drop.ondragover = e=>{e.preventDefault(); drop.classList.add('hot');};
+drop.ondragleave = ()=>drop.classList.remove('hot');
+drop.ondrop = e=>{ e.preventDefault(); drop.classList.remove('hot'); if(e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); };
+file.onchange = ()=>file.files[0] && upload(file.files[0]);
+async function upload(f){
+  const fd = new FormData(); fd.append('file', f);
+  toast('Installing ' + f.name + '…');
+  const res = await fetch('/api/modules/install', {method:'POST', body:fd});
+  const data = await res.json().catch(()=>({}));
+  toast(res.ok ? 'Installed ' + data.id : (data.error || 'Install failed'));
+  refresh();
+}
+$('#rescan').onclick = async ()=>{ await api('/api/modules/reload', {}); toast('Plugins rescanned'); refresh(); };
+
+/* helpers */
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function refresh(){
+  // While a settings field is focused a re-render would steal the caret.
+  // Retry instead of dropping the update, so a toggle clicked right after
+  // typing still paints.
+  if(editing){
+    clearTimeout(window._refresh_t);
+    window._refresh_t = setTimeout(refresh, 160);
+    return;
+  }
+  state = await api('/api/state');
+  render();
+}
+
+/* ---------------- module catalogue ---------------- */
+async function openCatalog(){
+  const modal = $('#catalogModal');
+  modal.classList.add('show');
+  const box = $('#catlist');
+  box.innerHTML = '<p class="hint">Loading modules…</p>';
+  try {
+    const res = await fetch('/api/catalog');
+    const data = await res.json();
+    $('#catnote').textContent = data.source === 'github'
+      ? 'Everything available, from GitHub. Removed modules can be added back.'
+      : 'Local catalogue — GitHub was unreachable.';
+    box.innerHTML = (data.modules || []).map(m => `
+      <div class="catrow">
+        <span class="catdot" style="background:${esc(m.accent || '#7CE7FF')}"></span>
+        <div class="catmain">
+          <div class="cattitle">${esc(m.name || m.id)}
+            <span class="catver">v${esc(m.version || '')}</span></div>
+          <div class="catsub">${esc(m.description || '')}</div>
+        </div>
+        ${m.installed
+          ? (m.removable === false
+              ? `<span class="coretag">core</span>`
+              : `<button class="ghost danger" data-remove="${esc(m.id)}">Remove</button>`)
+          : `<button class="ghost" data-add="${esc(m.id)}">Add</button>`}
+      </div>`).join('') || '<p class="hint">No modules found.</p>';
+  } catch (e) {
+    box.innerHTML = '<p class="hint">Could not load the catalogue.</p>';
+  }
+}
+
+$('#catclose').onclick = () => $('#catalogModal').classList.remove('show');
+$('#catalogModal').addEventListener('click', e => {
+  if (e.target.id === 'catalogModal') e.target.classList.remove('show');
+});
+$('#catlist').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-add],[data-remove]');
+  if (!btn) return;
+  const add = btn.dataset.add;
+  const remove = btn.dataset.remove;
+  btn.disabled = true;
+  btn.textContent = add ? 'Adding…' : 'Removing…';
+  try {
+    const url = add
+      ? `/api/modules/${add}/install_from_catalog`
+      : `/api/modules/${remove}/remove`;
+    const res = await fetch(url, { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'failed');
+    toast(add ? 'Module added' : 'Module removed');
+    await refresh();
+    openCatalog();
+  } catch (err) {
+    toast(String(err.message || 'Failed'));
+    btn.disabled = false;
+    btn.textContent = add ? 'Add' : 'Remove';
+  }
+});
+
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(x=>x.classList.remove('open'));
+});
+
+/* drag a module row to reorder it */
+let dragRow = null;
+document.addEventListener('dragstart', e => {
+  const row = e.target.closest('.modrow[draggable]');
+  if(!row || e.target.closest('.sw,button')) return;
+  dragRow = row;
+  row.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', row.dataset.mod);
+});
+document.addEventListener('dragend', () => {
+  if(dragRow) dragRow.classList.remove('dragging');
+  dragRow = null;
+  document.querySelectorAll('.drop-before,.drop-after').forEach(el=>el.classList.remove('drop-before','drop-after'));
+});
+$('#devices').addEventListener('dragover', e => {
+  if(!dragRow) return;
+  const row = e.target.closest('.modrow');
+  if(!row || row === dragRow || row.parentElement !== dragRow.parentElement) return;
+  e.preventDefault();
+  const rect = row.getBoundingClientRect();
+  const after = e.clientY > rect.top + rect.height / 2;
+  document.querySelectorAll('.drop-before,.drop-after').forEach(el=>el.classList.remove('drop-before','drop-after'));
+  row.classList.add(after ? 'drop-after' : 'drop-before');
+});
+$('#devices').addEventListener('drop', async e => {
+  if(!dragRow) return;
+  e.preventDefault();
+  const row = e.target.closest('.modrow');
+  if(row && row !== dragRow && row.parentElement === dragRow.parentElement){
+    const rect = row.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    row.parentElement.insertBefore(dragRow, after ? row.nextSibling : row);
+  }
+  const devEl = dragRow.closest('.device');
+  const devId = dragRow.dataset.dev;
+  const device = state.devices.find(d => d.id === devId);
+  const order = [...devEl.querySelectorAll('.modrow')].map(r => r.dataset.mod);
+  const items = order.map((mod, idx) => ({
+    module: mod,
+    enabled: !!((device.assignments[mod] || {}).enabled),
+    position: idx
+  }));
+  dragRow = null;
+  await api('/api/assignments', { device_id: devId, items });
+  toast('Order saved');
+  refresh();
+});
+
+
+let feed = null;
+function connectFeed(){
+  try{
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    feed = new WebSocket(proto + location.host + '/ws/dashboard');
+    feed.onopen = ()=>markLive(true);
+    feed.onmessage = (ev)=>{
+      try{
+        const msg = JSON.parse(ev.data);
+        if(msg.type === 'state' && !editing){ state = msg.state; render(); markLive(true); }
+      }catch(e){}
+    };
+    feed.onclose = ()=>{ markLive(false); setTimeout(connectFeed, 1500); };
+    feed.onerror = ()=>{ try{ feed.close(); }catch(e){} };
+  }catch(e){ setTimeout(connectFeed, 2000); }
+}
+function markLive(on){
+  const chip = document.getElementById('livechip');
+  if(!chip) return;
+  chip.textContent = on ? 'live' : 'reconnecting';
+  chip.style.color = on ? '' : '#FF8CA8';
+}
+/* ---- app updates ------------------------------------------------------ */
+const upd = {
+  busy: false,
+  beta: localStorage.getItem('updbeta') === '1',
+  available: false,
+  version: '',
+  notes: '',
+  state: 'idle',
+};
+const $upd = (id)=>document.getElementById(id);
+
+function cleanNotes(body){
+  return (body || '').split('\n')
+    .map(l => l.trim().replace(/^[-*]\s+/, '').replace(/^#+\s*/, '').replace(/\*\*|__|`/g, ''))
+    .filter(l => l && !l.startsWith('!['))
+    .join('\n')
+    .slice(0, 1600);
+}
+
+function setUpdMode(mode){
+  const btn = $upd('updcheck');
+  if(mode === 'update'){
+    btn.textContent = 'Update';
+    btn.className = 'primary';
+  }else{
+    btn.textContent = 'Check for updates';
+    btn.className = 'ghost';
+    btn.disabled = false;
+  }
+}
+
+async function checkUpdates(force){
+  if(upd.busy) return;
+  upd.busy = true;
+  $upd('updstatus').textContent = 'Checking for updates…';
+  try{
+    const r = await api(`/api/app/update?beta=${upd.beta ? 1 : 0}${force ? '&force=1' : ''}`);
+    $upd('updver').textContent = 'v' + (r.current || '—');
+    if(r.error){
+      $upd('updstatus').textContent = 'Could not check: ' + r.error;
+      setUpdMode('check');
+      return;
+    }
+    upd.available = !!r.available;
+    upd.version = r.latest || '';
+    upd.notes = r.notes || '';
+    if(r.available){
+      $upd('updstatus').textContent = `v${r.latest} is available${r.prerelease ? ' (beta)' : ''}.`;
+      setUpdMode('update');
+    }else{
+      $upd('updstatus').textContent = `You're on the latest build (v${r.current}).`;
+      setUpdMode('check');
+    }
+  }catch(e){
+    $upd('updstatus').textContent = 'Could not check for updates.';
+    setUpdMode('check');
+  }finally{
+    upd.busy = false;
+  }
+}
+
+function showUpdModal(){
+  $upd('updtitle').textContent = 'DeskGadget ' + upd.version;
+  $upd('updnotes').textContent = cleanNotes(upd.notes);
+  $upd('updModal').classList.add('show');
+}
+
+function renderProgress(p){
+  upd.state = p.state;
+  const wrap = $upd('updprogresswrap');
+  const bar = $upd('updbar');
+  const go = $upd('updgo');
+
+  if(p.state === 'downloading'){
+    wrap.hidden = false;
+    const pct = p.total > 0 ? Math.min(100, Math.round(p.received * 100 / p.total)) : 0;
+    bar.style.width = (p.total > 0 ? pct : 12) + '%';
+    $upd('updprogress').textContent = p.total > 0
+      ? `Downloading… ${pct}%`
+      : `Downloading… ${Math.round(p.received / 1048576)} MB`;
+    go.disabled = true;
+    go.textContent = 'Downloading…';
+    return;
+  }
+  if(p.state === 'ready'){
+    wrap.hidden = false;
+    bar.style.width = '100%';
+    $upd('updprogress').textContent = 'Downloaded. Restart to finish the update.';
+    go.disabled = false;
+    go.textContent = 'Update and restart';
+    return;
+  }
+  if(p.state === 'error'){
+    wrap.hidden = false;
+    bar.style.width = '100%';
+    bar.style.background = '#FF8CA8';
+    $upd('updprogress').textContent = 'Download failed: ' + (p.error || 'unknown error');
+    go.disabled = false;
+    go.textContent = 'Try again';
+    return;
+  }
+  wrap.hidden = true;
+  go.disabled = false;
+  go.textContent = 'Download';
+}
+
+function pollProgress(){
+  api('/api/app/update/progress').then(p => {
+    renderProgress(p);
+    if(p.state === 'downloading') setTimeout(pollProgress, 600);
+  }).catch(()=>{ setTimeout(pollProgress, 1500); });
+}
+
+async function startDownload(){
+  $upd('updprogresswrap').hidden = false;
+  $upd('updbar').style.width = '0';
+  $upd('updbar').style.background = '';
+  $upd('updprogress').textContent = 'Starting…';
+  $upd('updgo').disabled = true;
+  $upd('updgo').textContent = 'Downloading…';
+  try{
+    const r = await api('/api/app/update/download', { beta: upd.beta });
+    if(!r || !r.ok){
+      $upd('updprogress').textContent = (r && r.message) || 'Could not start the download.';
+      $upd('updgo').disabled = false;
+      $upd('updgo').textContent = 'Try again';
+      return;
+    }
+    renderProgress(r.progress || { state: 'downloading', received: 0, total: 0 });
+    pollProgress();
+  }catch(e){
+    $upd('updprogress').textContent = 'Could not start the download.';
+    $upd('updgo').disabled = false;
+    $upd('updgo').textContent = 'Try again';
+  }
+}
+
+async function openUpdate(){
+  if(!upd.available) return;
+  showUpdModal();
+  try{
+    const p = await api('/api/app/update/progress');
+    renderProgress(p);
+    if(p.state === 'downloading'){ pollProgress(); return; }
+    if(p.state === 'ready') return;
+  }catch(e){}
+  startDownload();
+}
+
+$upd('updcheck').onclick = ()=>{
+  if(upd.available) openUpdate();
+  else checkUpdates(true);
+};
+$upd('updbeta').checked = upd.beta;
+$upd('updbeta').onchange = (e)=>{
+  upd.beta = e.target.checked;
+  localStorage.setItem('updbeta', upd.beta ? '1' : '0');
+  upd.available = false;
+  checkUpdates(true);
+};
+$upd('updlater').onclick = ()=>$upd('updModal').classList.remove('show');
+$upd('updgo').onclick = async ()=>{
+  if(upd.state === 'ready'){
+    const go = $upd('updgo');
+    go.disabled = true;
+    go.textContent = 'Restarting…';
+    const r = await api('/api/app/update/apply', {});
+    if(!r || !r.ok){
+      go.disabled = false;
+      go.textContent = 'Update and restart';
+      $upd('updprogress').textContent = (r && r.message) || 'Could not start the update.';
+    }
+    return;
+  }
+  startDownload();
+};
+checkUpdates(false);
+
+refresh();
+connectFeed();
+</script>
+</body>
+</html>

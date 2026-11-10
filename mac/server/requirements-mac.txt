@@ -1,0 +1,24 @@
+# DeskGadget server — macOS
+# Python 3.9+ (Apple Silicon or Intel). The installer picks the newest python3
+# it can find; none of these packages need a compiler on a normal Mac.
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27
+websockets>=12
+psutil>=5.9
+zeroconf>=0.131
+requests>=2.31
+pillow>=10.0
+python-multipart>=0.0.9
+
+# Optional but recommended: unlocks the window switcher, touchpad, native app
+# icons and a cleaner media session. The server degrades to AppleScript + the
+# shell tools when these are missing, so they are safe to skip on very old
+# systems where a wheel is unavailable.
+pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=9.0; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices>=9.0; sys_platform == "darwin"
+pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
+
+# Optional: feed OBS Virtual Camera directly instead of using an OBS Media
+# Source. Install by hand if you want it: .venv/bin/pip install pyvirtualcam
+# pyvirtualcam>=0.10; sys_platform == "darwin"

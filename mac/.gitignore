@@ -1,0 +1,9 @@
+# mac build/runtime state
+.build/
+.venv/
+dist/
+server/data/
+server/artwork/
+__pycache__/
+*.py[cod]
+.DS_Store

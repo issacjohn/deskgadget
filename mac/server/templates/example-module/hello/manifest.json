@@ -1,0 +1,17 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "author": "Your name",
+  "description": "A minimal DeskGadget module. Copy this folder, change the id, restart.",
+  "accent": "#7CFFB2",
+  "interval": 5.0,
+  "default_enabled": true,
+  "settings": {
+    "greeting": {
+      "type": "string",
+      "label": "Greeting",
+      "default": "Hello from the PC"
+    }
+  }
+}

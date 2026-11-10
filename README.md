@@ -16,6 +16,13 @@ Windows server · Android client · plugins anyone can write
 > you choose exactly which modules each device sees. Everything is declarative
 > data over one WebSocket, so a new plugin is a folder on the PC.
 
+## macOS
+
+A standalone macOS server lives in [`mac/`](mac/): the same Android client, a
+native dashboard window, menu bar, CoreAudio/Accessibility backends, and a
+self-contained `.app` + DMG. Download **DeskGadget MAC** from Releases, or read
+[`mac/MAC.md`](mac/MAC.md).
+
 ---
 
 

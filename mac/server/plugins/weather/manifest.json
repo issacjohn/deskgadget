@@ -1,0 +1,36 @@
+{
+  "id": "weather",
+  "name": "Weather",
+  "version": "1.0.0",
+  "author": "DeskGadget",
+  "description": "Current conditions and 7-day forecast from Open-Meteo. No API key required.",
+  "accent": "#8BE9FD",
+  "interval": 600.0,
+  "default_enabled": true,
+  "settings": {
+    "location": {
+      "type": "string",
+      "label": "City label (optional)",
+      "placeholder": "Auto-detected from your IP",
+      "default": ""
+    },
+    "units": {
+      "type": "enum",
+      "label": "Units",
+      "options": ["C", "F"],
+      "default": "C"
+    },
+    "latitude": {
+      "type": "number",
+      "label": "Latitude (optional)",
+      "placeholder": "auto",
+      "default": ""
+    },
+    "longitude": {
+      "type": "number",
+      "label": "Longitude (optional)",
+      "placeholder": "auto",
+      "default": ""
+    }
+  }
+}

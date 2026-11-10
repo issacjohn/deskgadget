@@ -1,0 +1,11 @@
+{
+  "id": "camera",
+  "name": "Camera",
+  "version": "0.1.0",
+  "author": "DeskGadget",
+  "description": "Use this phone as a camera for the Mac.",
+  "accent": "#7CE7FF",
+  "interval": 5.0,
+  "default_enabled": true,
+  "settings": {}
+}

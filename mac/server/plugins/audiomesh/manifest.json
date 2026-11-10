@@ -1,0 +1,27 @@
+{
+  "id": "audiomesh",
+  "name": "AudioMesh",
+  "version": "0.2.0",
+  "author": "Isaac",
+  "description": "Routing, sync, delays, mute and volume for AudioMesh.",
+  "accent": "#4C8DFF",
+  "interval": 2.0,
+  "default_enabled": false,
+  "settings": {
+    "app_path": {
+      "type": "string",
+      "label": "AudioMesh app path",
+      "default": "/Applications/AudioMesh.app"
+    },
+    "api_port": {
+      "type": "number",
+      "label": "Control API port",
+      "default": 47823
+    },
+    "api_token": {
+      "type": "string",
+      "label": "Control API token",
+      "default": ""
+    }
+  }
+}
