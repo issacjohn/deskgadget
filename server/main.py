@@ -307,7 +307,7 @@ async def api_assignments(req: Request):
 @app.post("/api/devices/{device_id}/theme")
 async def api_device_theme(device_id: str, req: Request):
     body = await req.json()
-    store.set_theme(device_id, str(body.get("theme", "liquid")))
+    store.set_theme(device_id, str(body.get("theme", "black")))
     await hub.broadcast_layout()
     await broadcast_state()
     return {"ok": True}

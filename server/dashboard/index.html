@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="liquid">
+<html lang="en" data-theme="black">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#05070C" />
+<meta name="theme-color" content="#000000" />
 <title>DeskGadget</title>
 <style>
   :root{
@@ -24,12 +24,6 @@
 
   /* ---------- themes (mirrors the Android palettes) ---------- */
   html[data-theme="liquid"]{--tint:255,255,255;--bg:#05070C}
-  html[data-theme="glass"]{
-    --tint:255,255,255;--bg:#090D14;--line:rgba(var(--tint),.16);
-    --glass-a:rgba(var(--tint),.16);--glass-b:rgba(var(--tint),.07);
-    --blob1:#6C8BFF;--blob2:#6FE7FF;--blob3:#BFD0E8;--blob4:#5FF0C8;
-    --blob-opacity:.42;--blob-blur:120px;
-  }
   html[data-theme="black"]{
     --tint:255,255,255;--bg:#000;--line:rgba(var(--tint),.14);
     --glass-a:rgba(var(--tint),.075);--glass-b:rgba(var(--tint),.03);
@@ -40,11 +34,6 @@
     --tint:255,255,255;--bg:#07080B;--accent:#C9D4E4;
     --blob1:#8FA0B8;--blob2:#3A4557;--blob3:#5A6474;--blob4:#3A4557;
     --blob-opacity:.22;
-  }
-  html[data-theme="aurora"]{
-    --tint:255,255,255;--bg:#04100C;--accent:#5FF0C8;
-    --blob1:#10B981;--blob2:#22D3EE;--blob3:#A3E635;--blob4:#0E9F8A;
-    --blob-opacity:.45;
   }
   html[data-theme="white"]{
     --tint:15,23,36;--bg:#EEF2F8;
@@ -60,11 +49,11 @@
     --blob-opacity:.5;--blob-blur:110px;--blob-blend:multiply;
     color-scheme:light;
   }
-  html[data-theme="sunset"]{
-    --tint:255,255,255;--bg:#150810;--accent:#FFB07A;
-    --primary-a:#FFB07A;--primary-b:#FF6B9D;
-    --blob1:#FF7A45;--blob2:#FF3D7F;--blob3:#FFC371;--blob4:#7A3BFF;
-    --blob-opacity:.5;--blob-blur:100px;
+  html[data-theme="ember"]{
+    --tint:255,255,255;--bg:#0A0705;--accent:#FFB07A;
+    --primary-a:#FFB07A;--primary-b:#FF8A4C;
+    --blob1:#FF7A3C;--blob2:#FFB05C;--blob3:#8A3B18;--blob4:#FF8A4C;
+    --blob-opacity:.42;--blob-blur:110px;
   }
   html[data-theme="ocean"]{
     --tint:255,255,255;--bg:#03101A;--accent:#4CC9FF;
@@ -78,6 +67,7 @@
   body{
     margin:0; font-family:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif;
     background:var(--bg); color:var(--ink); overflow-x:hidden; font-size:14px;
+    font-variant-numeric:tabular-nums;
     transition:background .3s,color .3s;
     -webkit-font-smoothing:antialiased;
   }
@@ -135,7 +125,7 @@
   .badge{font-size:11px;letter-spacing:.04em;background:linear-gradient(135deg,var(--primary-a),var(--primary-b));
     padding:2px 8px;border-radius:99px;font-weight:700;color:var(--on-accent)}
   .hint{font-size:13.5px;color:var(--muted);margin:0 0 16px;line-height:1.55}
-  .updatebar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
+  .updatebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:8px;padding:10px 14px;border-radius:16px;margin:12px 0 0}
   .updatebar .hint{margin:0}
   .updbeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}
   .audmeter{width:64px;height:6px;border-radius:99px;background:rgba(var(--tint),.09);
@@ -452,9 +442,8 @@ function toast(text){
 
 /* The dashboard paints itself with the same palette as the phone, so picking
    a theme on the server changes both sides instead of only the app. */
-const THEME_BG = { liquid:'#05070C', glass:'#090D14', black:'#000000', white:'#EEF2F8',
-                   graphite:'#07080B', aurora:'#04100C',
-                   sunset:'#150810', ocean:'#03101A' };
+const THEME_BG = { black:'#000000', liquid:'#05070C', graphite:'#07080B',
+                   ocean:'#03101A', ember:'#0A0705', white:'#EEF2F8' };
 function applyTheme(theme){
   if(!theme || !(theme in THEME_BG)) return;
   document.documentElement.dataset.theme = theme;
@@ -466,7 +455,7 @@ function applyTheme(theme){
 function savedTheme(){
   try { return localStorage.getItem('deskgadget.theme'); } catch(e){ return null; }
 }
-applyTheme(savedTheme() || 'liquid');
+applyTheme(savedTheme() || 'black');
 async function api(path, body, method){
   const res = await fetch(path, {
     method: method || (body ? 'POST' : 'GET'),
@@ -493,7 +482,7 @@ function render(){
   const mc = $('#modcount'); if(mc) mc.textContent = state.modules.length;
   renderDevices();
   renderModules();
-  if(!savedTheme() && state.devices.length) applyTheme(state.devices[0].theme || 'liquid');
+  if(!savedTheme() && state.devices.length) applyTheme(state.devices[0].theme || 'black');
 }
 
 function renderDevices(){
@@ -529,8 +518,8 @@ function renderDevices(){
       </div>
       <div class="themerow">
         <span class="lbl">THEME</span>
-        ${[['liquid','Liquid'],['glass','Full Glass'],['black','OLED Black'],['white','White'],['graphite','Graphite'],['aurora','Aurora'],['sunset','Sunset'],['ocean','Ocean']]
-          .map(([id,label])=>`<button class="tbtn ${(document.documentElement.dataset.theme||'liquid')===id?'on':''}" data-theme="${id}">${label}</button>`).join('')}
+        ${[['black','OLED Black'],['liquid','Liquid'],['graphite','Graphite'],['ocean','Ocean'],['ember','Ember'],['white','White']]
+          .map(([id,label])=>`<button class="tbtn ${(document.documentElement.dataset.theme||'black')===id?'on':''}" data-theme="${id}">${label}</button>`).join('')}
       </div>
       <div class="themerow">
         <span class="lbl">SCREEN</span>

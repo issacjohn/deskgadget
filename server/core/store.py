@@ -74,7 +74,7 @@ class Store:
                     "name": dev.get("name") or name or "Android device",
                     "token": token,
                     "info": info,
-                    "theme": dev.get("theme") or self.data.get("theme") or "liquid",
+                    "theme": dev.get("theme") or self.data.get("theme") or "black",
                     "keep_screen": bool(dev.get("keep_screen", False)),
                 }
             )

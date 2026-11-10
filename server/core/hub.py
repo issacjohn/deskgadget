@@ -102,7 +102,7 @@ class Hub:
     async def broadcast_layout(self) -> None:
         for device_id, conns in list(self.conns.items()):
             pages = self.pages_for(device_id)
-            theme = (self.store.device(device_id) or {}).get("theme", "liquid")
+            theme = (self.store.device(device_id) or {}).get("theme", "black")
             keep = bool((self.store.device(device_id) or {}).get("keep_screen", False))
             for conn in list(conns):
                 conn.last_sent.clear()
@@ -147,7 +147,7 @@ class Hub:
                 "lan_ips": lan_ips(),
                 "port": self.port,
             },
-            "theme": dev.get("theme", "liquid"),
+            "theme": dev.get("theme", "black"),
             "keep_screen": bool(dev.get("keep_screen", False)),
             "pages": self.pages_for(conn.device_id),
         }
