@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Window
 import androidx.compose.material3.Icon
@@ -1978,6 +1979,7 @@ private fun iconForModule(id: String): ImageVector = when (id) {
     "weather" -> Icons.Rounded.WbSunny
     "media" -> Icons.Rounded.MusicNote
     "shortcuts" -> Icons.Rounded.GridView
+    "camera" -> Icons.Rounded.PhotoCamera
     "audiomesh" -> Icons.Rounded.GraphicEq
     "news" -> Icons.Rounded.Newspaper
     "windows" -> Icons.Rounded.Window
