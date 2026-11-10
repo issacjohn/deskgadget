@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -80,12 +81,61 @@ class Module(BaseModule):
         elif action == "play_pause":
             if media.command("play_pause") and self.now:
                 self.now["playing"] = not bool(self.now.get("playing"))
-        elif action == "next":
-            media.command("next")
-        elif action == "prev":
-            media.command("prev")
+        elif action in ("next", "prev"):
+            self._skip(action)
         elif action == "seek":
             media.seek(float(payload.get("value", 0)))
+
+    def _skip(self, action: str) -> None:
+        """Next/previous for music; ±5 s for a browser video.
+
+        Browser media sessions usually advertise play/pause but not
+        next/previous. Try the real skip, then for a browser bring it forward
+        and send the arrow key its player understands.
+        """
+        before = media.snapshot() or {}
+        source = str(before.get("source") or "")
+        browser = source in ("Firefox", "Chrome", "Safari", "Edge", "Brave")
+
+        media.command(action)
+        time.sleep(0.35)
+        after = media.snapshot()
+        if after and (
+            after.get("title") != before.get("title")
+            or abs(float(after.get("position") or 0) - float(before.get("position") or 0)) > 1.0
+        ):
+            self.now = after
+            return
+
+        if browser:
+            self._browser_arrow(source, action)
+            self.now = media.snapshot() or after or before
+            return
+
+        base = after or before
+        if not base:
+            return
+        target = max(0.0, float(base.get("position") or 0) + (10.0 if action == "next" else -10.0))
+        if media.seek(target):
+            self.now = media.snapshot() or base
+
+    def _browser_arrow(self, source: str, action: str) -> None:
+        try:
+            import Quartz
+
+            subprocess.run(
+                ["/usr/bin/open", "-a", source],
+                capture_output=True,
+                timeout=6,
+            )
+            time.sleep(0.35)
+            key = 124 if action == "next" else 123  # right / left arrow
+            for down in (True, False):
+                event = Quartz.CGEventCreateKeyboardEvent(None, key, down)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+                time.sleep(0.02)
+        except Exception:
+            log.debug("browser seek failed", exc_info=True)
 
     def _set(self, level: float) -> None:
         level = max(0.0, min(1.0, level))
