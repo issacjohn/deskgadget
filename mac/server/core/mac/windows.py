@@ -20,6 +20,31 @@ from . import mainthread, osascript
 
 log = logging.getLogger("deskgadget.mac.windows")
 
+#: windows owned by system agents that are not useful to switch to
+_SYSTEM_OWNERS = {
+    "WindowManager",
+    "MenuBarAgent",
+    "Dock",
+    "ControlCenter",
+    "SystemUIServer",
+    "NotificationCenter",
+    "loginwindow",
+    "Spotlight",
+    "TextInputMenuAgent",
+    "AirPlayUIAgent",
+    "WeatherMenu",
+}
+
+
+def _quartz():
+    try:
+        import Quartz
+
+        return Quartz
+    except Exception:
+        return None
+
+
 _SCRIPT = """
 try
     set out to ""
@@ -198,8 +223,82 @@ def _applescript_list(limit: int) -> list[dict]:
     return items
 
 
+def _cg_list(limit: int) -> list[dict]:
+    """Every on-screen window, with no Accessibility permission required.
+
+    Window *titles* come from CoreGraphics and are only populated when Screen
+    Recording is allowed; without it we still show one row per window named
+    after its app. Focusing this row activates the app (per-window precision
+    needs Accessibility).
+    """
+    quartz = _quartz()
+    if quartz is None:
+        return []
+    try:
+        options = (
+            quartz.kCGWindowListOptionOnScreenOnly
+            | quartz.kCGWindowListExcludeDesktopElements
+        )
+        infos = quartz.CGWindowListCopyWindowInfo(options, quartz.kCGNullWindowID) or []
+    except Exception:
+        log.debug("CGWindowList unavailable", exc_info=True)
+        return []
+
+    paths = {app["pid"]: app["path"] for app in _running_apps()}
+    items: list[dict] = []
+    per_app: dict[int, int] = {}
+    seen: set[int] = set()
+
+    for info in infos:
+        try:
+            if int(info.get("kCGWindowLayer") or 0) != 0:
+                continue
+            pid = int(info.get("kCGWindowOwnerPID") or 0)
+            if not pid or pid == os.getpid():
+                continue
+            owner = str(info.get("kCGWindowOwnerName") or "").strip()
+            if not owner or owner in _SYSTEM_OWNERS:
+                continue
+            number = int(info.get("kCGWindowNumber") or 0)
+            if number in seen:
+                continue
+            bounds = info.get("kCGWindowBounds") or {}
+            width = float(bounds.get("Width") or 0)
+            height = float(bounds.get("Height") or 0)
+            if width < 100 or height < 80:
+                continue
+            if float(info.get("kCGWindowAlpha") or 1.0) <= 0.01:
+                continue
+
+            per_app[pid] = per_app.get(pid, 0) + 1
+            title = str(info.get("kCGWindowName") or "").strip()
+            if not title:
+                title = f"{owner} window {per_app[pid]}"
+            seen.add(number)
+            items.append(
+                {
+                    "key": f"cg:{pid}:{number}",
+                    "pid": pid,
+                    "app": owner,
+                    "title": title,
+                    "path": paths.get(pid, ""),
+                    "minimized": False,
+                }
+            )
+            if len(items) >= limit:
+                break
+        except Exception:
+            continue
+    return items
+
+
 def list_windows(limit: int = 20) -> list[dict]:
     items = _accessibility_list(limit)
+    if items:
+        return items
+    # No Accessibility permission (or no AX windows): CoreGraphics still sees
+    # every on-screen window and needs no permission for owner/bounds.
+    items = _cg_list(limit)
     if items:
         return items
     return _applescript_list(limit)
@@ -223,6 +322,24 @@ def _activate_app(pid: int, name: str) -> bool:
 
 def focus_window(key: str, app_name: str = "", title: str = "") -> bool:
     """Raise one window. Runs on the AppKit main thread inside the bundled app."""
+    if key.startswith("cg:"):
+        try:
+            _, pid_text, _number = key.split(":", 2)
+            pid = int(pid_text)
+        except ValueError:
+            return False
+        try:
+            return bool(
+                mainthread.run(
+                    lambda: _activate_app(pid, app_name),
+                    timeout=3.0,
+                    default=False,
+                )
+            )
+        except Exception:
+            log.debug("CG focus dispatch failed", exc_info=True)
+            return False
+
     try:
         return bool(
             mainthread.run(

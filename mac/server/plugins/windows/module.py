@@ -54,11 +54,23 @@ class Module(BaseModule):
     def _hint(self) -> str:
         permission = (caps().get("permissions") or {}).get("accessibility")
         if permission is False:
-            return "Allow Accessibility for DeskGadget in the Setup card"
+            return "No on-screen windows — grant Accessibility or Screen Recording"
         return "Nothing to switch to"
 
     def page(self) -> dict:
         blocks: list[dict] = []
+        permission = (caps().get("permissions") or {}).get("accessibility")
+
+        if self.items and permission is False:
+            blocks.append(
+                {
+                    "type": "note",
+                    "label": "LIMITED ACCESS",
+                    "text": "Grant Accessibility for per-window focus. Tapping now brings the app forward.",
+                    "meta": "Screen Recording adds window titles",
+                }
+            )
+
         if not self.items:
             blocks.append(
                 {

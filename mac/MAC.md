@@ -196,7 +196,13 @@ restart the server (or toggle the app off/on in the list).
 |---|---|---|
 | **System** | psutil + `sysctl` + `pmset` + `screencapture` | — |
 | **Media** | CoreAudio (ctypes) for volume and per-device mute; AppleScript or `nowplaying-cli` for transport | `osascript set volume` |
-| **Windows** | Accessibility API (`AXUIElement`) + NSWorkspace | System Events AppleScript |
+| **Windows** | Accessibility API (`AXUIElement`) + NSWorkspace | CoreGraphics (`CGWindowList`) + app activation; no permission needed |
+
+The window switcher is the one module with a no-permission path: without
+Accessibility it lists every visible window through CoreGraphics and tapping a
+row activates that app. Accessibility adds per-window focus, and Screen
+Recording fills in the window titles. macOS never requires either permission
+just to switch apps.
 | **Touchpad** | Quartz `CGEvent` | `cliclick` |
 | **Clipboard** | `pbpaste` / `pbcopy` | — |
 | **Shortcuts** | `/Applications` scan, `open`, `.icns` → PNG via `sips` | NSWorkspace icon |
