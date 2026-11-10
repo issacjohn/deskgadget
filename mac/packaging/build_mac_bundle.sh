@@ -52,7 +52,15 @@ fi
 
 # ---- 3. icon ---------------------------------------------------------------
 ICNS="$BUILD/AppIcon.icns"
-if [ ! -f "$ICNS" ] && [ -f "$ROOT/docs/screenshots/icon.png" ]; then
+ICON_SRC=""
+for candidate in \
+  "$ROOT/docs/screenshots/icon.png" \
+  "$ROOT/../docs/screenshots/icon.png" \
+  "$ROOT/branding/icon.png" \
+  "$ROOT/../branding/icon.png"; do
+  if [ -f "$candidate" ]; then ICON_SRC="$candidate"; break; fi
+done
+if [ ! -f "$ICNS" ] && [ -n "$ICON_SRC" ]; then
   TMP="$(mktemp -d)"
   ICONSET="$TMP/AppIcon.iconset"
   mkdir -p "$ICONSET"
@@ -61,7 +69,7 @@ if [ ! -f "$ICNS" ] && [ -f "$ROOT/docs/screenshots/icon.png" ]; then
               "512 icon_256x256@2x" "512 icon_512x512" "1024 icon_512x512@2x"; do
     size="${spec%% *}"
     name="${spec##* }"
-    /usr/bin/sips -z "$size" "$size" "$ROOT/docs/screenshots/icon.png" \
+    /usr/bin/sips -z "$size" "$size" "$ICON_SRC" \
       --out "$ICONSET/$name.png" >/dev/null 2>&1 || true
   done
   /usr/bin/iconutil -c icns "$ICONSET" -o "$ICNS" >/dev/null 2>&1 || true
@@ -103,6 +111,7 @@ ARGS=(
 )
 [ -n "$ADB" ] && ARGS+=(--add-binary "$ADB:bin")
 [ -f "$ICNS" ] && ARGS+=(--icon "$ICNS")
+[ -f "$ROOT/packaging/MenuIcon.png" ] && ARGS+=(--add-data "$ROOT/packaging/MenuIcon.png:.")
 
 # Dynamic imports (the `core.*` alias used by plugins, and lazy OS backends)
 # are invisible to the analyser; list every core module explicitly.

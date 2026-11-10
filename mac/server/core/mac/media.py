@@ -14,9 +14,11 @@ No private frameworks are loaded, which is what keeps this working across macOS
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +28,10 @@ from . import osascript, run, which
 log = logging.getLogger("deskgadget.mac.media")
 
 _SEP = "\x1f"
+
+#: track key -> served artwork URL, plus a retry clock for tracks without art
+_art_cache: dict[str, str] = {}
+_art_tried: dict[str, float] = {}
 _APPS = (
     ("Spotify", "Spotify"),
     ("Music", "Apple Music"),
@@ -128,30 +134,32 @@ def transport_available() -> bool:
     return adapter_available() or _nowplaying_bin() is not None
 
 
-def _adapter_snapshot(art_dir: Optional[Path]) -> Optional[dict]:
+def _adapter_get(include_art: bool) -> Optional[dict]:
     pair = _adapter_paths()
     if pair is None:
         return None
     script, framework = pair
-    result = run(
-        [
-            which("perl") or "/usr/bin/perl",
-            str(script),
-            str(framework),
-            "get",
-            "--no-artwork",
-        ],
-        timeout=12,
-    )
+    args = [which("perl") or "/usr/bin/perl", str(script), str(framework), "get"]
+    if not include_art:
+        args.append("--no-artwork")
+    result = run(args, timeout=20 if include_art else 12)
     if result.returncode != 0:
         return None
     try:
         data = json.loads((result.stdout or "").strip() or "null")
     except ValueError:
         return None
-    if not isinstance(data, dict) or not str(data.get("title") or "").strip():
+    return data if isinstance(data, dict) else None
+
+
+def _adapter_snapshot(art_dir: Optional[Path]) -> Optional[dict]:
+    data = _adapter_get(False)
+    if not data or not str(data.get("title") or "").strip():
         return None
 
+    title = str(data.get("title") or "").strip()
+    artist = str(data.get("artist") or "").strip()
+    album = str(data.get("album") or "").strip()
     bundle = str(data.get("bundleIdentifier") or "")
     try:
         position = float(data.get("elapsedTime") or 0)
@@ -161,15 +169,38 @@ def _adapter_snapshot(art_dir: Optional[Path]) -> Optional[dict]:
         duration = float(data.get("duration") or 0)
     except (TypeError, ValueError):
         duration = 0.0
+
+    artwork = ""
+    if art_dir is not None:
+        key = f"{title}|{artist}|{album}"
+        artwork = _art_cache.get(key, "")
+        # Artwork is a second, heavier call, so only when the track changes and
+        # at most once every few seconds for players that load it lazily.
+        if not artwork and time.time() - _art_tried.get(key, 0.0) > 8.0:
+            _art_tried[key] = time.time()
+            full = _adapter_get(True) or {}
+            encoded = full.get("artworkData")
+            if encoded:
+                try:
+                    raw = base64.b64decode(encoded)
+                except Exception:
+                    raw = b""
+                artwork = _save_art(raw, art_dir)
+                if artwork:
+                    _art_cache.clear()
+                    _art_cache[key] = artwork
+                    if len(_art_tried) > 16:
+                        _art_tried.clear()
+
     return {
-        "title": str(data.get("title") or "").strip(),
-        "artist": str(data.get("artist") or "").strip(),
-        "album": str(data.get("album") or "").strip(),
+        "title": title,
+        "artist": artist,
+        "album": album,
         "source": _BUNDLES.get(bundle, ""),
         "playing": bool(data.get("playing")),
         "position": max(0.0, position),
         "duration": max(0.0, duration),
-        "artwork": "",
+        "artwork": artwork,
     }
 
 

@@ -64,6 +64,27 @@ def _ask_permissions(kinds=None) -> None:
         log.exception("could not request permissions")
 
 
+def _menu_icon():
+    """The monochrome desk mark used in the menu bar, if it was bundled."""
+    try:
+        from AppKit import NSImage
+
+        from server.core.paths import bundle_dirs
+
+        for base in bundle_dirs():
+            path = base / "MenuIcon.png"
+            if not path.is_file():
+                continue
+            image = NSImage.alloc().initWithContentsOfFile_(str(path))
+            if image is not None:
+                image.setSize_((20.0, 20.0))
+                image.setTemplate_(True)  # macOS tints it for light/dark bars
+                return image
+    except Exception:
+        log.debug("menu icon unavailable", exc_info=True)
+    return None
+
+
 def _menu_available() -> bool:
     try:
         import AppKit  # noqa: F401
@@ -83,6 +104,7 @@ def _run_app(server) -> int:
         NSApplication,
         NSApplicationActivationPolicyRegular,
         NSBackingStoreBuffered,
+        NSImage,
         NSMakeRect,
         NSMenu,
         NSMenuItem,
@@ -288,8 +310,14 @@ def _run_app(server) -> int:
 
     menu_controller = MenuController.alloc().init()
     status = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
-    status.button().setTitle_("DG")
-    status.button().setToolTip_("DeskGadget")
+    button = status.button()
+    menu_image = _menu_icon()
+    if menu_image is not None:
+        button.setImage_(menu_image)
+        button.setTitle_("")
+    else:
+        button.setTitle_("DG")
+    button.setToolTip_("DeskGadget")
 
     menu = NSMenu.alloc().init()
     menu.setAutoenablesItems_(False)
