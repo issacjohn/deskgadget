@@ -182,7 +182,7 @@ class Module(BaseModule):
     async def update(self) -> None:
         try:
             self.items = await asyncio.to_thread(self._fetch)
-            self.error = None
+            self.error = None if self.items else "No headlines — check the network"
             self.updated_at = time.time()
         except Exception as exc:
             self.error = str(exc)[:120]
@@ -259,6 +259,95 @@ class Module(BaseModule):
             codes = [self._detect_country()]
         return codes[:6]
 
+    def _bing_url(self, topic: str, hl: str, gl: str) -> str:
+        key = topic.strip().upper()
+        query = (
+            TOPIC_QUERIES.get(key)
+            or TOPIC_SLUGS.get(key, "").replace("-", " ")
+            or topic.strip()
+        )
+        if not query:
+            return ""
+        lang = (hl.split("-")[0] or "en")
+        return (
+            "https://www.bing.com/news/search?q="
+            + requests.utils.quote(query)
+            + f"&format=RSS&setlang={lang}&cc={gl}"
+        )
+
+    def _collect(self, root, topic: str, rows: list[dict], seen: set[str]) -> int:
+        added = 0
+        for item in root.findall(".//item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            if not title or not link:
+                continue
+            title = SUFFIX.sub("", title).strip()
+            key = title.lower()
+            if key in seen:
+                continue
+
+            # Bing wraps links in an apiclick redirect; unwrap it.
+            if "bing.com/news/apiclick.aspx" in link:
+                try:
+                    from urllib.parse import parse_qs, unquote, urlparse
+
+                    query = parse_qs(urlparse(link).query)
+                    link = unquote(query.get("url", [link])[0])
+                except Exception:
+                    pass
+            seen.add(key)
+
+            source_el = item.find("source")
+            if source_el is None:
+                for child in item:
+                    if str(child.tag).endswith("Source"):
+                        source_el = child
+                        break
+            source = (source_el.text if source_el is not None else "") or ""
+            domain = ""
+            if source_el is not None and source_el.get("url"):
+                try:
+                    from urllib.parse import urlparse
+
+                    domain = urlparse(source_el.get("url", "")).netloc
+                except Exception:
+                    domain = ""
+            if not domain:
+                try:
+                    from urllib.parse import urlparse
+
+                    domain = urlparse(link).netloc
+                except Exception:
+                    domain = ""
+            image = (
+                f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+                if domain
+                else ""
+            )
+            published = None
+            pub = item.findtext("pubDate")
+            if pub:
+                try:
+                    published = parsedate_to_datetime(pub)
+                    if published.tzinfo is None:
+                        published = published.replace(tzinfo=timezone.utc)
+                except Exception:
+                    published = None
+
+            rows.append(
+                {
+                    "title": title,
+                    "sub": source.strip() or topic.title(),
+                    "value": _ago(published),
+                    "url": link,
+                    "image": image,
+                    "ts": published.timestamp() if published else 0,
+                }
+            )
+            added += 1
+        return added
+
     def _fetch(self) -> list[dict]:
         limit = int(self.settings.get("limit", 8) or 8)
         topics = self._all_topics()
@@ -270,69 +359,37 @@ class Module(BaseModule):
         for region in regions:
             hl, gl, ceid = REGIONS[region]
             for topic in topics:
-                url = _feed_url(topic, hl, gl, ceid)
-                if not url:
-                    continue
-                try:
-                    response = requests.get(
-                        url,
-                        timeout=12,
-                        headers={"User-Agent": "Mozilla/5.0 (DeskGadget)"},
-                    )
-                    response.raise_for_status()
-                    root = ET.fromstring(response.content)
-                except Exception:
-                    log.warning("feed failed: %s/%s", region, topic)
-                    continue
-
-                for item in root.findall(".//item"):
-                    title = (item.findtext("title") or "").strip()
-                    link = (item.findtext("link") or "").strip()
-                    if not title or not link:
+                candidates = [
+                    _feed_url(topic, hl, gl, ceid),
+                    self._bing_url(topic, hl, gl),
+                ]
+                for index, url in enumerate(candidates):
+                    if not url:
                         continue
-                    title = SUFFIX.sub("", title).strip()
-                    key = title.lower()
-                    if key in seen:
+                    try:
+                        response = requests.get(
+                            url,
+                            timeout=12,
+                            headers={
+                                "User-Agent": (
+                                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                    "Chrome/131.0 Safari/537.36"
+                                ),
+                                "Accept": "application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": f"{hl},en;q=0.8",
+                            },
+                        )
+                        response.raise_for_status()
+                        root = ET.fromstring(response.content)
+                    except Exception:
+                        if index == 0:
+                            log.warning("google feed failed: %s/%s", region, topic)
                         continue
-                    seen.add(key)
+                    if self._collect(root, topic, rows, seen):
+                        break
 
-                    source_el = item.find("source")
-                    source = (source_el.text if source_el is not None else "") or ""
-                    domain = ""
-                    if source_el is not None:
-                        try:
-                            from urllib.parse import urlparse
-
-                            domain = urlparse(source_el.get("url", "")).netloc
-                        except Exception:
-                            domain = ""
-                    image = (
-                        f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
-                        if domain
-                        else ""
-                    )
-                    published = None
-                    pub = item.findtext("pubDate")
-                    if pub:
-                        try:
-                            published = parsedate_to_datetime(pub)
-                            if published.tzinfo is None:
-                                published = published.replace(tzinfo=timezone.utc)
-                        except Exception:
-                            published = None
-
-                    rows.append(
-                        {
-                            "title": title,
-                            "sub": source.strip() or topic.title(),
-                            "value": _ago(published),
-                            "url": link,
-                            "image": image,
-                            "ts": published.timestamp() if published else 0,
-                        }
-                    )
-
-        rows.sort(key=lambda r: r["ts"], reverse=True)
+        rows.sort(key=lambda row: row["ts"], reverse=True)
         return rows[:limit]
 
     # -- actions -----------------------------------------------------------
