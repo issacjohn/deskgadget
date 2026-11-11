@@ -18,11 +18,11 @@ except Exception:  # missing runtime, e.g. a stripped build
     sd = None
 
 RATE = 48000
-BLOCK = 960  # 20 ms
+BLOCK = 480  # 10 ms; WASAPI below is the low-latency path
 # Bound the jitter buffer: past ~160 ms the phone is audibly late, so drop the
 # oldest chunks instead of letting a slow stretch turn into seconds of delay.
-MAX_LAG_CHUNKS = 8
-KEEP_LAG_CHUNKS = 4
+MAX_LAG_CHUNKS = 4
+KEEP_LAG_CHUNKS = 2
 
 
 class AudioSink:
@@ -36,6 +36,7 @@ class AudioSink:
         self._last_frame = 0.0
         self._frames = 0
         self._gate_gain = 0.0
+        self._stream_channels = 1
         self.state = {
             "enabled": True,
             "device": "",
@@ -119,21 +120,63 @@ class AudioSink:
         return ""
 
     def _cable(self) -> dict | None:
-        """The VB-CABLE render side, chosen automatically. No other device."""
+        """The VB-CABLE render side, chosen automatically. No other device.
+
+        Prefer WASAPI: MME sits about 100 ms behind it on Windows, which is
+        exactly the "audio arrives after the video" symptom.
+        """
+        if sd is None:
+            return None
+        try:
+            apis = sd.query_hostapis()
+        except Exception:
+            apis = []
+
+        def api_rank(device: dict) -> int:
+            try:
+                name = str(apis[int(device.get("hostapi", 0))].get("name", "")).lower()
+            except Exception:
+                return 0
+            if "wasapi" in name:
+                return 5
+            if "wdm-ks" in name:
+                return 4
+            if "directsound" in name:
+                return 2
+            if "mme" in name:
+                return 1
+            return 0
+
         best: dict | None = None
-        best_score = 0
-        for device in self.devices():
-            name = str(device.get("name", "")).lower()
-            if "cable input" in name:
-                score = 3
-            elif "vb-audio" in name or "virtual cable" in name:
-                score = 2
-            elif "voicemeeter" in name or "virtual cable" in name:
-                score = 1
-            else:
-                continue
-            if score > best_score:
-                best, best_score = device, score
+        best_score = -1
+        try:
+            for index, device in enumerate(sd.query_devices()):
+                if int(device.get("max_output_channels", 0)) <= 0:
+                    continue
+                name = str(device.get("name", ""))
+                lowered = name.lower()
+                if "16ch" in lowered or "point" in lowered:
+                    continue
+                if "cable input" in lowered:
+                    kind = 3
+                elif "vb-audio" in lowered or "virtual cable" in lowered:
+                    kind = 2
+                elif "voicemeeter" in lowered or "virtual audio" in lowered:
+                    kind = 1
+                else:
+                    continue
+                score = kind * 10 + api_rank(device)
+                if score > best_score:
+                    best_score = score
+                    best = {
+                        "index": index,
+                        "name": name,
+                        "channels": int(device.get("max_output_channels", 2)),
+                        "rate": int(device.get("default_samplerate", RATE)),
+                        "api": api_rank(device),
+                    }
+        except Exception as exc:
+            self.state["error"] = str(exc)
         return best
 
     def _device_index(self) -> int:
@@ -153,14 +196,17 @@ class AudioSink:
         with self._lock:
             if self._stream is not None:
                 return
+            # WASAPI requires the endpoint's channel count. VB-CABLE's render
+            # side is stereo, so the mono phone feed is duplicated below.
             self._stream = sd.RawOutputStream(
                 samplerate=RATE,
-                channels=1,
+                channels=2,
                 dtype="int16",
                 device=index,
                 blocksize=BLOCK,
                 latency="low",
             )
+            self._stream_channels = 2
             self._stream.start()
             try:
                 self.state["actual"] = str(sd.query_devices(index)["name"])
@@ -198,6 +244,9 @@ class AudioSink:
                         gain = 1.0
                     samples = samples * volume * gain
                     out = np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
+                if self._stream_channels == 2:
+                    mono = np.frombuffer(out, dtype=np.int16)
+                    out = np.repeat(mono, 2).tobytes()
                 self._stream.write(out)
                 self.state["error"] = ""
             except Exception as exc:
