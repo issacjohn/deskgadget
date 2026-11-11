@@ -17,7 +17,11 @@ Download **`DeskGadget-MAC-<version>-arm64.dmg`** from
 **DeskGadget** into Applications, and open it.
 
 Apple Silicon, macOS 11+. The build is ad-hoc signed: right-click → **Open** the
-first time if Gatekeeper complains. On first launch the app asks macOS for the
+first time if Gatekeeper complains.
+
+**Android app:** install the latest stable
+[DeskGadget.apk](https://github.com/issacjohn/deskgadget/releases/latest/download/DeskGadget.apk)
+— the same APK works with every DeskGadget server. On first launch the app asks macOS for the
 permissions it needs (Accessibility, Screen Recording, Automation); grant them
 in the dashboard's **MAC SETUP** card.
 

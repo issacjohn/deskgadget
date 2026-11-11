@@ -32,6 +32,9 @@ install — no Homebrew, no Python, no developer tools, and **no browser**.
   with the Mac, add it in System Settings → General → **Login Items** (or the
   menu bar's *Login Items…*). At login it shows its window; close it to leave
   the server in the menu bar.
+* **Phone:** install the latest stable
+  [DeskGadget.apk](https://github.com/issacjohn/deskgadget/releases/latest/download/DeskGadget.apk)
+  — one APK for every server.
 * The build is ad-hoc signed. If Gatekeeper warns, right-click → **Open** once.
 
 The bundled runtime targets **macOS 11+ on Apple Silicon** (every Apple Silicon
@@ -47,9 +50,9 @@ pip-installs native wheels.
    `~/Library/LaunchAgents` is writable — registers a LaunchAgent. Otherwise it
    installs the standalone app for you to open, and leaves auto-start to you.
 2. The dashboard opens at <http://localhost:8787>.
-3. Install `DeskGadget.apk` from the
-   [releases page](https://github.com/issacjohn/deskgadget/releases) on the
-   phone. It is the same APK — nothing Android-side changed.
+3. Install the latest stable
+   [DeskGadget.apk](https://github.com/issacjohn/deskgadget/releases/latest/download/DeskGadget.apk)
+   on the phone. It is the same APK — nothing Android-side changed.
 4. Open the app, pick this Mac from the list, done.
 
 Foreground/development run: **`mac/run.command`** (data stays in `server/data`).
