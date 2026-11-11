@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import os
 import platform
 import re
 import subprocess
+import sys
 import time
 from collections import deque
+from pathlib import Path
 
 import psutil
 import requests
@@ -57,8 +60,12 @@ class Module(BaseModule):
         self.batt_percent: float | None = None
         self.batt_plugged = True
         self.batt_left = ""
-        self.processes: list[dict] = []
-        self._tick = 0
+        self.cpu_temp: float | None = None
+        self.gpu_temp: float | None = None
+        self.gpu_name = ""
+        self._lhm = None
+        self._temp_at = 0.0
+        self._temp_task: asyncio.Task | None = None
 
     async def on_start(self) -> None:
         psutil.cpu_percent(None)
@@ -69,11 +76,131 @@ class Module(BaseModule):
             for _ in range(48):
                 self.history.append(self.cpu)
 
+    # -- temperatures ------------------------------------------------------
+    def _load_lhm(self) -> None:
+        if self._lhm is not None:
+            return
+        try:
+            import clr
+
+            folder = Path(__file__).with_name("lhm")
+            if str(folder) not in sys.path:
+                sys.path.insert(0, str(folder))
+            clr.AddReference(str(folder / "LibreHardwareMonitorLib.dll"))
+            from LibreHardwareMonitor.Hardware import Computer
+
+            computer = Computer()
+            computer.IsCpuEnabled = True
+            computer.IsGpuEnabled = True
+            computer.Open()
+            self._lhm = computer
+        except Exception:
+            self._lhm = None
+
+    def _read_temps_sync(self) -> None:
+        self._load_lhm()
+        cpu: float | None = None
+        gpu: float | None = None
+        gpu_name = ""
+        computer = self._lhm
+        if computer is not None:
+            try:
+                for hardware in computer.Hardware:
+                    hardware.Update()
+                    kind = str(hardware.HardwareType)
+                    if "Cpu" in kind:
+                        values = []
+                        for sensor in hardware.Sensors:
+                            if str(sensor.SensorType) != "Temperature" or sensor.Value is None:
+                                continue
+                            name = str(sensor.Name)
+                            if "Package" in name or "Tctl" in name:
+                                cpu = float(sensor.Value)
+                                break
+                            values.append(float(sensor.Value))
+                        if cpu is None and values:
+                            cpu = max(values)
+                    elif "Gpu" in kind and gpu is None:
+                        for sensor in hardware.Sensors:
+                            if (
+                                str(sensor.SensorType) == "Temperature"
+                                and sensor.Value is not None
+                                and "Core" in str(sensor.Name)
+                            ):
+                                gpu = float(sensor.Value)
+                                gpu_name = str(hardware.Name)
+                                break
+            except Exception:
+                pass
+
+        if gpu is None:
+            try:
+                output = subprocess.run(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=name,temperature.gpu",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                line = (output.stdout or "").strip().splitlines()
+                if line:
+                    parts = [p.strip() for p in line[0].split(",")]
+                    if len(parts) >= 2 and parts[1]:
+                        gpu_name = parts[0]
+                        gpu = float(parts[1])
+            except Exception:
+                pass
+
+        if cpu is None and time.time() - getattr(self, "_acpi_at", 0.0) > 60:
+            self._acpi_at = time.time()
+            try:
+                output = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        "$t=(Get-CimInstance -Namespace root/WMI "
+                        "-ClassName MSAcpi_ThermalZoneTemperature "
+                        "-ErrorAction SilentlyContinue | Measure-Object "
+                        "CurrentTemperature -Maximum).Maximum; "
+                        "if($t){[math]::Round($t/10-273.15,1)}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=6,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                text = (output.stdout or "").strip()
+                if text:
+                    cpu = float(text)
+            except Exception:
+                pass
+
+        self.cpu_temp = cpu
+        self.gpu_temp = gpu
+        if gpu_name:
+            self.gpu_name = gpu_name
+
+    async def _read_temps(self) -> None:
+        try:
+            await asyncio.to_thread(self._read_temps_sync)
+        except Exception:
+            pass
+
     async def update(self) -> None:
         self.cpu = psutil.cpu_percent(None)
         self.history.append(round(self.cpu, 1))
 
         now = time.time()
+        if now - self._temp_at > 2.0:
+            self._temp_at = now
+            if self._temp_task is None or self._temp_task.done():
+                self._temp_task = asyncio.create_task(self._read_temps())
         # public address rarely changes; latency is cheap and useful live
         if now - self._ip_at > 600:
             try:
@@ -114,12 +241,6 @@ class Module(BaseModule):
                 "on AC" if battery.power_plugged else self._minutes(battery.secsleft)
             )
 
-        # process scan is expensive: run it off-loop, a few times a minute
-        self._tick += 1
-        task = getattr(self, "_scan_task", None)
-        if (task is None or task.done()) and (self._tick % 5 == 1 or not self.processes):
-            self._scan_task = asyncio.create_task(self._scan_processes())
-
         mem = psutil.virtual_memory()
         self.mem_percent = mem.percent
         self.mem_used = _gb(mem.used)
@@ -139,30 +260,6 @@ class Module(BaseModule):
         self.net_up = up
         self.net_down = down
 
-
-    async def _scan_processes(self) -> None:
-        try:
-            self.processes = await asyncio.to_thread(self._scan_processes_sync)
-        except Exception:
-            pass
-
-    def _scan_processes_sync(self) -> list[dict]:
-        rows = []
-        for proc in sorted(
-            psutil.process_iter(["pid", "name", "memory_info"]),
-            key=lambda p: (p.info.get("memory_info").rss if p.info.get("memory_info") else 0),
-            reverse=True,
-        )[:4]:
-            info = proc.info
-            mib = (info.get("memory_info").rss / (1024 ** 2)) if info.get("memory_info") else 0
-            rows.append(
-                {
-                    "title": (info.get("name") or "?")[:26],
-                    "sub": f"PID {info.get('pid')}",
-                    "value": f"{mib:.0f} MB",
-                }
-            )
-        return rows
 
     def _rate(self, bps: float) -> str:
         if bps > 1024 ** 2:
@@ -218,6 +315,24 @@ class Module(BaseModule):
                 {"label": "BATT", "value": round(self.batt_percent), "suffix": "%"}
             )
 
+        power_items = [
+            {
+                "label": "Power",
+                "value": "AC" if self.batt_plugged else "Battery",
+            }
+        ]
+        if self.batt_percent is not None:
+            power_items.append(
+                {"label": "Battery", "value": f"{self.batt_percent:.0f}%"}
+            )
+        power_items.extend(
+            [
+                {"label": "Uptime", "value": uptime_text},
+                {"label": "LAN IP", "value": lan_ip()},
+                {"label": "Public IP", "value": self.public_ip},
+            ]
+        )
+
         blocks = [
             {
                 "type": "controls",
@@ -231,31 +346,35 @@ class Module(BaseModule):
                 ],
             },
             {
+                "type": "kv",
+                "col": 0,
+                "items": power_items,
+            },
+            {
                 "type": "gauges",
                 "items": gauges,
                 "col": 1,
             },
             {
-                "type": "meters",
+                "type": "sparkline",
+                "label": "CPU LOAD",
+                "points": [round(v, 1) for v in self.history],
+                "min": 0,
+                "max": 100,
+                "col": 1,
+            },
+            {
+                "type": "thermals",
                 "col": 2,
-                "items": [
-                    {
-                        "label": "Memory",
-                        "value": self.mem_percent,
-                        "left": f"{self.mem_used} GB used",
-                        "right": f"{self.mem_total} GB",
-                    },
-                    {
-                        "label": "Disk C:",
-                        "value": self.disk_percent,
-                        "left": f"{self.disk_free} GB free",
-                        "right": f"{self.disk_total} GB",
-                    },
-                ],
+                "cpu": None if self.cpu_temp is None else round(self.cpu_temp),
+                "gpu": None if self.gpu_temp is None else round(self.gpu_temp),
+                "cpu_name": "package" if self.cpu_temp is not None else "admin required",
+                "gpu_name": self.gpu_name
+                or ("unavailable" if self.gpu_temp is None else "GPU"),
             },
             {
                 "type": "kv",
-                "col": 1,
+                "col": 2,
                 "items": [
                     {"label": "Down", "value": self._rate(self.net_down)},
                     {"label": "Up", "value": self._rate(self.net_up)},
@@ -267,37 +386,5 @@ class Module(BaseModule):
                     },
                 ],
             },
-            {
-                "type": "kv",
-                "col": 2,
-                "items": [
-                    {"label": "Public IP", "value": self.public_ip},
-                    {"label": "LAN IP", "value": lan_ip()},
-                ],
-            },
-            (
-                {
-                    "type": "kv",
-                    "col": 0,
-                    "items": [
-                        {"label": "Battery", "value": f"{self.batt_percent:.0f}%"},
-                        {
-                            "label": "Power",
-                            "value": "AC" if self.batt_plugged else "Battery",
-                        },
-                        {"label": "Uptime", "value": uptime_text},
-                    ],
-                }
-                if self.batt_percent is not None
-                else {
-                    "type": "kv",
-                    "col": 0,
-                    "items": [
-                        {"label": "Power", "value": "AC"},
-                        {"label": "Battery", "value": "None"},
-                        {"label": "Uptime", "value": uptime_text},
-                    ],
-                }
-            ),
         ]
         return {"blocks": blocks}

@@ -182,6 +182,7 @@ fun BlockView(
         "gauges" -> GaugeCard(block, accent, modifier)
         "sparkline" -> SparkCard(block, accent, modifier)
         "meters" -> MetersCard(block, accent, modifier)
+        "thermals" -> ThermalCard(block, accent, modifier)
         "kv" -> KvCard(block, modifier)
         "list" -> ListCard(block, accent, endpoint, modifier) { action, payload -> onAction(action, payload) }
         "news" -> NewsBlock(block, accent) { action, payload -> onAction(action, payload) }
@@ -493,6 +494,104 @@ private fun MetersCard(block: JSONObject, accent: Color, modifier: Modifier) {
     }
 }
 
+/* ----------------------------- thermals ----------------------------- */
+
+@Composable
+private fun ThermalCard(block: JSONObject, accent: Color, modifier: Modifier) {
+    val compact = LocalCompactLayout.current
+    GlassPanel(modifier.fillMaxWidth()) {
+        Text(
+            "THERMALS",
+            color = Muted,
+            fontSize = 10.sp,
+            letterSpacing = 2.sp,
+        )
+        Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ThermalStat(
+                label = "CPU",
+                value = thermalValue(block, "cpu"),
+                sub = block.str("cpu_name"),
+                modifier = Modifier.weight(1f),
+                compact = compact,
+            )
+            ThermalStat(
+                label = "GPU",
+                value = thermalValue(block, "gpu"),
+                sub = block.str("gpu_name"),
+                modifier = Modifier.weight(1f),
+                compact = compact,
+            )
+        }
+    }
+}
+
+private fun thermalValue(block: JSONObject, key: String): Float? {
+    if (!block.has(key) || block.isNull(key)) return null
+    val value = block.optDouble(key, Double.NaN)
+    return if (value.isNaN()) null else value.toFloat().coerceIn(0f, 100f)
+}
+
+private fun thermalColor(value: Float): Color = when {
+    value < 60f -> Color(0xFF5BE49B)
+    value < 80f -> Color(0xFFFFC96B)
+    else -> Color(0xFFFF8CA8)
+}
+
+@Composable
+private fun ThermalStat(
+    label: String,
+    value: Float?,
+    sub: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean,
+) {
+    val tint = value?.let { thermalColor(it) } ?: Faint
+    Column(modifier) {
+        Text(
+            label,
+            color = Muted,
+            fontSize = 8.5.sp,
+            letterSpacing = 1.3.sp,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            if (value == null) "—" else "${value.toInt()}°C",
+            color = if (value == null) Faint else Ink,
+            fontSize = if (compact) 21.sp else 25.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            sub.ifBlank { if (value == null) "unavailable" else "sensor" },
+            color = Faint,
+            fontSize = 9.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(7.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0x1FFFFFFF)),
+        ) {
+            if (value != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth((value / 100f).coerceIn(0.02f, 1f))
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(tint),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ProgressTrack(fraction: Float, accent: Color) {
     Box(
@@ -543,13 +642,30 @@ private fun KvItem(item: JSONObject, modifier: Modifier) {
 @Composable
 private fun KvCard(block: JSONObject, modifier: Modifier) {
     val items = block.arr("items")
+    val perRow = if (items.length() > 3) 2 else items.length().coerceAtLeast(1)
     GlassPanel(
         modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            for (i in 0 until items.length()) {
-                KvItem(items.getJSONObject(i), Modifier.weight(1f))
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            var index = 0
+            while (index < items.length()) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    repeat(perRow) {
+                        if (index < items.length()) {
+                            KvItem(items.getJSONObject(index), Modifier.weight(1f))
+                            index++
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
             }
         }
     }
