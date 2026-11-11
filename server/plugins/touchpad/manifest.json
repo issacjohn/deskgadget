@@ -1,9 +1,9 @@
 {
   "id": "touchpad",
-  "name": "Touchpad",
-  "version": "1.0.0",
+  "name": "Mouse & Keyboard",
+  "version": "1.1.0",
   "author": "DeskGadget",
-  "description": "Use the phone as a trackpad: drag to move, tap to click, two fingers to scroll.",
+  "description": "Use the phone as a trackpad and keyboard: drag to move, tap to click, two fingers to scroll, and tap the keyboard to type on the PC.",
   "accent": "#7CE7FF",
   "interval": 0,
   "default_enabled": false,

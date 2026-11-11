@@ -1990,7 +1990,7 @@ private fun iconForModule(id: String): ImageVector = when (id) {
     "wol" -> Icons.Rounded.PowerSettingsNew
     "drives" -> Icons.Rounded.Storage
     "timer" -> Icons.Rounded.Timer
-    "touchpad" -> Icons.Rounded.TouchApp
+    "touchpad" -> InputIcon
     else -> Icons.Rounded.Widgets
 }
 

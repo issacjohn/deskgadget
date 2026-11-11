@@ -1,7 +1,7 @@
-"""Touchpad: the phone becomes a trackpad for the PC.
+"""Mouse & Keyboard: the phone becomes a pointer and a keyboard for the PC.
 
 One finger moves the pointer, a tap clicks, two fingers scroll, and the
-buttons under the pad give you right/middle click without guesswork.
+keyboard button opens a text pad that types into the focused PC window.
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import ctypes
 import logging
 
 from core.base import Module as BaseModule
+from ctypes import wintypes
 
 log = logging.getLogger("deskgadget.touchpad")
 
@@ -30,6 +31,111 @@ BUTTONS = {
 
 def _mouse(flags: int, dx: int = 0, dy: int = 0, data: int = 0) -> None:
     ctypes.windll.user32.mouse_event(flags, dx, dy, data, 0)
+
+
+# -- keyboard --------------------------------------------------------------
+ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    ]
+
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    ]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", wintypes.DWORD),
+        ("wParamL", wintypes.WORD),
+        ("wParamH", wintypes.WORD),
+    ]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
+
+
+class INPUT(ctypes.Structure):
+    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
+
+VK_RETURN = 0x0D
+VK_BACK = 0x08
+VK_TAB = 0x09
+VK_ESCAPE = 0x1B
+
+
+def _send(events: list[INPUT]) -> None:
+    if not events:
+        return
+    array = (INPUT * len(events))(*events)
+    ctypes.windll.user32.SendInput(len(events), array, ctypes.sizeof(INPUT))
+
+
+def _key(vk: int) -> None:
+    down = INPUT(type=INPUT_KEYBOARD)
+    down.u.ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
+    up = INPUT(type=INPUT_KEYBOARD)
+    up.u.ki = KEYBDINPUT(
+        wVk=vk, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0
+    )
+    _send([down, up])
+
+
+def _char(unit: int) -> None:
+    down = INPUT(type=INPUT_KEYBOARD)
+    down.u.ki = KEYBDINPUT(
+        wVk=0, wScan=unit, dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0
+    )
+    up = INPUT(type=INPUT_KEYBOARD)
+    up.u.ki = KEYBDINPUT(
+        wVk=0,
+        wScan=unit,
+        dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+        time=0,
+        dwExtraInfo=0,
+    )
+    _send([down, up])
+
+
+def _type_text(text: str) -> None:
+    """Type arbitrary Unicode text into whichever window has focus."""
+    for ch in text:
+        if ch == "\n" or ch == "\r":
+            _key(VK_RETURN)
+        elif ch == "\b":
+            _key(VK_BACK)
+        elif ch == "\t":
+            _key(VK_TAB)
+        elif ch == "\x1b":
+            _key(VK_ESCAPE)
+        else:
+            code = ord(ch)
+            if code <= 0xFFFF:
+                _char(code)
+            else:
+                code -= 0x10000
+                _char(0xD800 + (code >> 10))
+                _char(0xDC00 + (code & 0x3FF))
 
 
 class Module(BaseModule):
@@ -70,6 +176,10 @@ class Module(BaseModule):
             elif action == "middle":
                 _mouse(BUTTONS["middle"][0])
                 _mouse(BUTTONS["middle"][1])
+            elif action == "type":
+                text = str(payload.get("text", ""))
+                if text:
+                    _type_text(text)
         except Exception:
             log.debug("pointer action failed", exc_info=True)
 
@@ -78,9 +188,9 @@ class Module(BaseModule):
             "blocks": [
                 {
                     "type": "touchpad",
-                    "label": "TOUCHPAD",
+                    "label": "MOUSE & KEYBOARD",
                     "sensitivity": self.settings.get("sensitivity", 1.0),
-                    "hint": "Drag to move · Tap to click · Two fingers to scroll",
+                    "hint": "Drag to move · Tap to click · Two fingers to scroll · Keyboard to type",
                 }
             ]
         }

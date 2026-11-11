@@ -70,6 +70,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -84,6 +85,7 @@ import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Sync
@@ -130,12 +132,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1660,6 +1669,19 @@ private fun TouchpadCard(
     val sensitivity = block.num("sensitivity", 1.0).toFloat().coerceIn(0.25f, 3f)
     var dot by remember { mutableStateOf(Offset.Unspecified) }
     var touched by remember { mutableStateOf(false) }
+    var keyboardOpen by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(keyboardOpen) {
+        if (keyboardOpen) {
+            delay(140)
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
 
     GlassPanel(modifier.fillMaxSize(), contentPadding = PaddingValues(0.dp)) {
         Column(Modifier.fillMaxSize()) {
@@ -1674,12 +1696,93 @@ private fun TouchpadCard(
                     letterSpacing = 2.sp,
                     modifier = Modifier.weight(1f),
                 )
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            if (keyboardOpen) {
+                                keyboardOpen = false
+                                text = ""
+                                focusManager.clearFocus()
+                                keyboard?.hide()
+                            } else {
+                                keyboardOpen = true
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Keyboard,
+                        contentDescription = "Keyboard",
+                        tint = if (keyboardOpen) accent else Muted,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
                 Text(
                     String.format("%.1fx", sensitivity),
                     color = Faint,
                     fontSize = 10.sp,
                 )
             }
+            if (keyboardOpen) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x1F000000))
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        BasicTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            textStyle = TextStyle(color = Ink, fontSize = 15.sp),
+                            cursorBrush = SolidColor(accent),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (text.isNotEmpty()) {
+                                        onAction("type", JSONObject().put("text", text))
+                                        text = ""
+                                    }
+                                },
+                            ),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                            decorationBox = { inner ->
+                                if (text.isEmpty()) {
+                                    Text("Type on the PC…", color = Faint, fontSize = 13.sp)
+                                }
+                                inner()
+                            },
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TouchButton("SEND", accent, Modifier.width(82.dp)) {
+                        if (text.isNotEmpty()) {
+                            onAction("type", JSONObject().put("text", text))
+                            text = ""
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    TouchButton("DONE", accent, Modifier.width(82.dp)) {
+                        keyboardOpen = false
+                        text = ""
+                        focusManager.clearFocus()
+                        keyboard?.hide()
+                    }
+                }
+            } else {
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -1784,6 +1887,7 @@ private fun TouchpadCard(
                 TouchButton("MIDDLE", accent, Modifier.weight(1f)) {
                     onAction("tap", JSONObject().put("button", "middle"))
                 }
+            }
             }
         }
     }
