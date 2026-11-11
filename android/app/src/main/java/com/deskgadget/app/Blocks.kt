@@ -1696,10 +1696,18 @@ private fun TouchpadCard(
                     letterSpacing = 2.sp,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
+                Row(
                     Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (keyboardOpen) accent.copy(alpha = 0.18f) else Color(0x14FFFFFF)
+                        )
+                        .border(
+                            1.dp,
+                            if (keyboardOpen) accent.copy(alpha = 0.5f) else Color(0x1FFFFFFF),
+                            RoundedCornerShape(10.dp),
+                        )
                         .clickable {
                             if (keyboardOpen) {
                                 keyboardOpen = false
@@ -1709,17 +1717,26 @@ private fun TouchpadCard(
                             } else {
                                 keyboardOpen = true
                             }
-                        },
-                    contentAlignment = Alignment.Center,
+                        }
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         Icons.Rounded.Keyboard,
                         contentDescription = "Keyboard",
                         tint = if (keyboardOpen) accent else Muted,
-                        modifier = Modifier.size(17.dp),
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "KEYBOARD",
+                        color = if (keyboardOpen) Ink else Muted,
+                        fontSize = 8.5.sp,
+                        letterSpacing = 1.1.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     String.format("%.1fx", sensitivity),
                     color = Faint,
