@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import json
 import os
 import platform
 import re
@@ -62,13 +63,15 @@ class Module(BaseModule):
         self.batt_left = ""
         self.cpu_temp: float | None = None
         self.gpu_temp: float | None = None
+        self.gpu_hot: float | None = None
+        self.gpu_memory: float | None = None
         self.gpu_name = ""
         self._lhm = None
         self._temp_at = 0.0
         self._temp_task: asyncio.Task | None = None
 
     async def on_start(self) -> None:
-        psutil.cpu_percent(None)
+        self.cpu = psutil.cpu_percent(None)
         self._fill_history()
 
     def _fill_history(self) -> None:
@@ -77,63 +80,143 @@ class Module(BaseModule):
                 self.history.append(self.cpu)
 
     # -- temperatures ------------------------------------------------------
-    def _load_lhm(self) -> None:
-        if self._lhm is not None:
-            return
+    # CPU package temperature is only readable through the debug interface that
+    # LibreHardwareMonitor drives, and that needs administrator rights. A tiny
+    # helper process (this exe with --sensors) does the .NET work and writes
+    # sensors.json; the server never loads .NET itself, which keeps it stable.
+    def _sensor_files(self) -> list[Path]:
+        paths: list[Path] = []
         try:
-            import clr
+            from core.paths import data_dir
 
-            folder = Path(__file__).with_name("lhm")
-            if str(folder) not in sys.path:
-                sys.path.insert(0, str(folder))
-            clr.AddReference(str(folder / "LibreHardwareMonitorLib.dll"))
-            from LibreHardwareMonitor.Hardware import Computer
-
-            computer = Computer()
-            computer.IsCpuEnabled = True
-            computer.IsGpuEnabled = True
-            computer.Open()
-            self._lhm = computer
+            paths.append(data_dir() / "sensors.json")
         except Exception:
-            self._lhm = None
+            pass
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        paths.append(Path(base) / "DeskGadget" / "sensors.json")
+        return paths
 
-    def _read_temps_sync(self) -> None:
-        self._load_lhm()
-        cpu: float | None = None
-        gpu: float | None = None
-        gpu_name = ""
-        computer = self._lhm
-        if computer is not None:
+    def _sensor_fresh(self) -> bool:
+        for path in self._sensor_files():
             try:
-                for hardware in computer.Hardware:
-                    hardware.Update()
-                    kind = str(hardware.HardwareType)
-                    if "Cpu" in kind:
-                        values = []
-                        for sensor in hardware.Sensors:
-                            if str(sensor.SensorType) != "Temperature" or sensor.Value is None:
-                                continue
-                            name = str(sensor.Name)
-                            if "Package" in name or "Tctl" in name:
-                                cpu = float(sensor.Value)
-                                break
-                            values.append(float(sensor.Value))
-                        if cpu is None and values:
-                            cpu = max(values)
-                    elif "Gpu" in kind and gpu is None:
-                        for sensor in hardware.Sensors:
-                            if (
-                                str(sensor.SensorType) == "Temperature"
-                                and sensor.Value is not None
-                                and "Core" in str(sensor.Name)
-                            ):
-                                gpu = float(sensor.Value)
-                                gpu_name = str(hardware.Name)
-                                break
+                if time.time() - path.stat().st_mtime <= 15:
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _sensor_file_temp(self) -> float | None:
+        for path in self._sensor_files():
+            try:
+                if time.time() - path.stat().st_mtime > 15:
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("gpu") is not None:
+                    self.gpu_temp = float(data["gpu"])
+                if data.get("hot") is not None:
+                    self.gpu_hot = float(data["hot"])
+                if data.get("memory") is not None:
+                    self.gpu_memory = float(data["memory"])
+                if data.get("name"):
+                    self.gpu_name = str(data["name"])
+                if data.get("cpu") is not None:
+                    return float(data["cpu"])
             except Exception:
+                continue
+        return None
+
+    def _sensor_ready(self) -> bool:
+        if self.cpu_temp is not None:
+            return True
+        for path in self._sensor_files():
+            try:
+                if time.time() - path.stat().st_mtime > 15:
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("cpu") is not None:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _ensure_sensor_process(self) -> None:
+        """Start the unelevated helper when no elevated one is feeding us."""
+        if self._sensor_fresh():
+            return
+        proc = getattr(self, "_sensor_proc", None)
+        if proc is not None and proc.poll() is None:
+            return
+        if getattr(sys, "frozen", False):
+            command = [sys.executable, "--sensors"]
+        else:
+            launcher = Path(__file__).resolve().parents[3] / "packaging" / "launcher.py"
+            command = [sys.executable, str(launcher), "--sensors"]
+        try:
+            self._sensor_proc = subprocess.Popen(
+                command,
+                cwd=str(Path.home()),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            self._sensor_proc = None
+
+    def _install_sensor_task(self) -> bool:
+        """Register a per-user task at highest rights; it needs no further UAC."""
+        if getattr(sys, "frozen", False):
+            command = f'"{sys.executable}" --sensors'
+        else:
+            launcher = Path(__file__).resolve().parents[3] / "packaging" / "launcher.py"
+            command = f'"{sys.executable}" "{launcher}" --sensors'
+        lines = [
+            "$ErrorActionPreference = 'Stop'",
+            f"$command = '{command}'",
+            "$action = New-ScheduledTaskAction -Execute 'cmd.exe' "
+            "-Argument ('/c start \"\" /min ' + $command)",
+            "$trigger = New-ScheduledTaskTrigger -AtLogOn "
+            "-User \"$env:USERDOMAIN\\$env:USERNAME\"",
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
+            "-DontStopIfGoingOnBatteries -StartWhenAvailable "
+            "-ExecutionTimeLimit ([TimeSpan]::Zero)",
+            "$principal = New-ScheduledTaskPrincipal "
+            "-UserId \"$env:USERDOMAIN\\$env:USERNAME\" -RunLevel Highest "
+            "-LogonType Interactive",
+            "Register-ScheduledTask -TaskName 'DeskGadgetSensors' -Action $action "
+            "-Trigger $trigger -Settings $settings -Principal $principal -Force "
+            "| Out-Null",
+            "Start-ScheduledTask -TaskName 'DeskGadgetSensors'",
+        ]
+        script = Path(os.environ.get("TEMP", ".")) / "deskgadget-sensors.ps1"
+        try:
+            script.write_text("\r\n".join(lines), encoding="utf-8-sig")
+            launch = (
+                "Start-Process -FilePath 'powershell.exe' -ArgumentList "
+                f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script}' "
+                "-Verb RunAs -Wait -WindowStyle Hidden"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", launch],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+        finally:
+            try:
+                script.unlink()
+            except OSError:
                 pass
 
-        if gpu is None:
+    def _read_temps_sync(self) -> None:
+        self._ensure_sensor_process()
+        cpu = self._sensor_file_temp()
+
+        if self.gpu_temp is None:
             try:
                 output = subprocess.run(
                     [
@@ -150,8 +233,8 @@ class Module(BaseModule):
                 if line:
                     parts = [p.strip() for p in line[0].split(",")]
                     if len(parts) >= 2 and parts[1]:
-                        gpu_name = parts[0]
-                        gpu = float(parts[1])
+                        self.gpu_name = parts[0]
+                        self.gpu_temp = float(parts[1])
             except Exception:
                 pass
 
@@ -182,9 +265,6 @@ class Module(BaseModule):
                 pass
 
         self.cpu_temp = cpu
-        self.gpu_temp = gpu
-        if gpu_name:
-            self.gpu_name = gpu_name
 
     async def _read_temps(self) -> None:
         try:
@@ -295,6 +375,13 @@ class Module(BaseModule):
             elif action == "screenshot":
                 _combo(VK_LWIN, VK_SHIFT, 0x53)
                 await self.hub.notify("Snipping tool open")
+            elif action == "cpu_sensor":
+                await self.hub.notify("Approve the Windows prompt")
+                ok = await asyncio.to_thread(self._install_sensor_task)
+                await self.hub.notify(
+                    "CPU sensor enabled" if ok else "CPU sensor not enabled"
+                )
+                self._temp_at = 0.0
         except Exception:
             pass
         self.push()
@@ -305,77 +392,82 @@ class Module(BaseModule):
         days, hours = divmod(hours, 24)
         uptime_text = f"{days}d {hours}h" if days else f"{hours}h {rem // 60}m"
 
-        gauges = [
-            {"label": "CPU", "value": round(self.cpu), "suffix": "%"},
-            {"label": "RAM", "value": round(self.mem_percent), "suffix": "%"},
-            {"label": "DISK", "value": round(self.disk_percent), "suffix": "%"},
+        cpu_temp = None if self.cpu_temp is None else round(self.cpu_temp)
+        gpu_temp = None if self.gpu_temp is None else round(self.gpu_temp)
+
+        actions = [
+            {"id": "lock", "icon": "lock", "label": "Lock PC"},
+            {"id": "monitor_off", "icon": "screen_off", "label": "Screen off"},
+            {"id": "show_desktop", "icon": "desktop", "label": "Desktop"},
+            {"id": "screenshot", "icon": "camera", "label": "Capture"},
+        ]
+        info_items = [
+            {"label": "Power", "value": "AC" if self.batt_plugged else "Battery"},
+            {"label": "Uptime", "value": uptime_text},
+            {"label": "LAN IP", "value": lan_ip()},
+            {"label": "Public IP", "value": self.public_ip},
         ]
         if self.batt_percent is not None:
-            gauges.append(
-                {"label": "BATT", "value": round(self.batt_percent), "suffix": "%"}
+            info_items.insert(
+                1, {"label": "Battery", "value": f"{self.batt_percent:.0f}%"}
             )
 
-        power_items = [
+        storage = [
             {
-                "label": "Power",
-                "value": "AC" if self.batt_plugged else "Battery",
-            }
+                "label": "Memory",
+                "value": round(self.mem_percent),
+                "used": f"{self.mem_used:.1f} GB",
+                "total": f"{self.mem_total:.1f} GB",
+                "free": f"{max(self.mem_total - self.mem_used, 0.0):.1f} GB",
+            },
+            {
+                "label": "Disk C:",
+                "value": round(self.disk_percent),
+                "used": f"{max(self.disk_total - self.disk_free, 0.0):.0f} GB",
+                "total": f"{self.disk_total:.0f} GB",
+                "free": f"{self.disk_free:.0f} GB",
+            },
         ]
-        if self.batt_percent is not None:
-            power_items.append(
-                {"label": "Battery", "value": f"{self.batt_percent:.0f}%"}
-            )
-        power_items.extend(
-            [
-                {"label": "Uptime", "value": uptime_text},
-                {"label": "LAN IP", "value": lan_ip()},
-                {"label": "Public IP", "value": self.public_ip},
-            ]
-        )
 
         blocks = [
             {
                 "type": "controls",
-                "style": "stack",
+                "style": "grid",
                 "col": 0,
-                "items": [
-                    {"id": "lock", "icon": "lock", "label": "Lock PC"},
-                    {"id": "monitor_off", "icon": "screen_off", "label": "Screen off"},
-                    {"id": "show_desktop", "icon": "desktop", "label": "Desktop"},
-                    {"id": "screenshot", "icon": "camera", "label": "Screenshot"},
-                ],
+                "items": actions,
             },
             {
                 "type": "kv",
                 "col": 0,
-                "items": power_items,
+                "items": info_items,
             },
             {
-                "type": "gauges",
-                "items": gauges,
+                "type": "cpu",
                 "col": 1,
-            },
-            {
-                "type": "sparkline",
-                "label": "CPU LOAD",
+                "value": round(self.cpu),
+                "temp": cpu_temp,
+                "temp_name": "package" if cpu_temp is not None else "enable sensor",
+                "threads": psutil.cpu_count(logical=True) or 0,
                 "points": [round(v, 1) for v in self.history],
                 "min": 0,
                 "max": 100,
+            },
+            {
+                "type": "storage",
                 "col": 1,
+                "items": storage,
             },
             {
-                "type": "thermals",
+                "type": "gpu",
                 "col": 2,
-                "cpu": None if self.cpu_temp is None else round(self.cpu_temp),
-                "gpu": None if self.gpu_temp is None else round(self.gpu_temp),
-                "cpu_name": "package" if self.cpu_temp is not None else "admin required",
-                "gpu_name": self.gpu_name
-                or ("unavailable" if self.gpu_temp is None else "GPU"),
-            },
-            {
-                "type": "kv",
-                "col": 2,
-                "items": [
+                "temp": gpu_temp,
+                "hot": None if self.gpu_hot is None else round(self.gpu_hot),
+                "memory": None
+                if self.gpu_memory is None
+                else round(self.gpu_memory),
+                "name": self.gpu_name
+                or ("GPU" if gpu_temp is not None else "unavailable"),
+                "net": [
                     {"label": "Down", "value": self._rate(self.net_down)},
                     {"label": "Up", "value": self._rate(self.net_up)},
                     {

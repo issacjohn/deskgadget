@@ -646,7 +646,91 @@ def claim_single_instance() -> bool:
         return True
 
 
+def run_sensor_helper() -> int:
+    """Elevated helper: sample CPU/GPU temperatures into sensors.json.
+
+    Windows only exposes CPU package temperature through the debug interface
+    that LibreHardwareMonitor drives, and that needs administrator rights. The
+    app therefore registers this helper once as a per-user task at highest
+    rights; the server just reads the file.
+    """
+    folder = bundle_root() / "server" / "plugins" / "system" / "lhm"
+    if str(folder) not in sys.path:
+        sys.path.insert(0, str(folder))
+    try:
+        import clr
+
+        clr.AddReference(str(folder / "LibreHardwareMonitorLib.dll"))
+        from LibreHardwareMonitor.Hardware import Computer
+
+        computer = Computer()
+        computer.IsCpuEnabled = True
+        computer.IsGpuEnabled = True
+        computer.Open()
+    except Exception:
+        return 1
+
+    target = local_app_dir() / "sensors.json"
+    scratch = local_app_dir() / "sensors.tmp"
+    while True:
+        cpu = None
+        gpu = None
+        hot = None
+        memory = None
+        gpu_name = None
+        try:
+            for hardware in computer.Hardware:
+                hardware.Update()
+                kind = str(hardware.HardwareType)
+                if "Cpu" in kind:
+                    package = None
+                    values = []
+                    for sensor in hardware.Sensors:
+                        if (
+                            str(sensor.SensorType) != "Temperature"
+                            or sensor.Value is None
+                        ):
+                            continue
+                        name = str(sensor.Name)
+                        if "Package" in name or "Tctl" in name:
+                            package = float(sensor.Value)
+                            break
+                        values.append(float(sensor.Value))
+                    cpu = package if package is not None else (max(values) if values else None)
+                elif "Gpu" in kind:
+                    if gpu_name is None:
+                        gpu_name = str(hardware.Name)
+                    for sensor in hardware.Sensors:
+                        if (
+                            str(sensor.SensorType) != "Temperature"
+                            or sensor.Value is None
+                        ):
+                            continue
+                        name = str(sensor.Name)
+                        if "Hot Spot" in name:
+                            hot = float(sensor.Value)
+                        elif "Memory" in name:
+                            memory = float(sensor.Value)
+                        elif "Core" in name and gpu is None:
+                            gpu = float(sensor.Value)
+            payload = {
+                "cpu": cpu,
+                "gpu": gpu,
+                "hot": hot,
+                "memory": memory,
+                "name": gpu_name,
+                "at": time.time(),
+            }
+            scratch.write_text(json.dumps(payload), encoding="utf-8")
+            scratch.replace(target)
+        except Exception:
+            pass
+        time.sleep(2.0)
+
+
 def main() -> int:
+    if "--sensors" in sys.argv[1:]:
+        return run_sensor_helper()
     headless = any(arg in sys.argv[1:] for arg in ("--no-window", "--no-browser", "-n"))
     # pywebview stores the app root from argv[0] when imported; make it absolute
     # before changing the working directory, or dev mode looks in the wrong place.

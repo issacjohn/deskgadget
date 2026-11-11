@@ -106,6 +106,12 @@ val LocalPalette = staticCompositionLocalOf { LiquidPalette }
 /** True when the window is wider than it is tall, so cards tighten their padding. */
 val LocalCompactLayout = staticCompositionLocalOf { false }
 
+/**
+ * True inside the System console: one fused panel supplies the glass, so the
+ * cards inside drop their own panel and share the surface instead.
+ */
+val LocalBareCards = staticCompositionLocalOf { false }
+
 /** Battery saver, a low battery or a warm phone: draw the backdrop once. */
 private fun shouldThrottleBackdrop(context: Context): Boolean {
     val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -181,8 +187,13 @@ fun GlassPanel(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(28.dp),
     contentPadding: PaddingValues? = null,
+    fillContent: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    if (LocalBareCards.current) {
+        Column(modifier) { content() }
+        return
+    }
     val time = LocalLiquidTime.current
     val root = LocalRootSize.current
     val compact = LocalCompactLayout.current
@@ -251,7 +262,10 @@ fun GlassPanel(
             )
         )
 
-        Column(Modifier.padding(pad), content = content)
+        Column(
+            (if (fillContent) Modifier.fillMaxSize() else Modifier).padding(pad),
+            content = content,
+        )
     }
 }
 

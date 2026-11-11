@@ -250,6 +250,71 @@ def install_virtual_cable(target: Path) -> None:
         print("  virtual audio cable installed - restart Windows to finish it")
 
 
+def _task_exists(name: str = "DeskGadgetSensors") -> bool:
+    try:
+        result = subprocess.run(
+            ["schtasks", "/Query", "/TN", name],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def register_sensor_task(target: Path) -> None:
+    """Register the elevated temperature helper, once, at logon.
+
+    CPU package temperature needs the MSR access LibreHardwareMonitor gets only
+    with administrator rights. A per-user task at highest rights reads it every
+    two seconds and writes sensors.json, so the app itself stays unelevated.
+    """
+    exe = target / f"{APP}.exe"
+    if not exe.exists() or _task_exists():
+        return
+    print("  enabling CPU temperature readings (approve the Windows prompt)")
+    command = f'"{exe}" --sensors'
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        f"$command = '{command}'",
+        "$action = New-ScheduledTaskAction -Execute 'cmd.exe' "
+        "-Argument ('/c start \"\" /min ' + $command)",
+        "$trigger = New-ScheduledTaskTrigger -AtLogOn "
+        "-User \"$env:USERDOMAIN\\$env:USERNAME\"",
+        "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
+        "-DontStopIfGoingOnBatteries -StartWhenAvailable "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero)",
+        "$principal = New-ScheduledTaskPrincipal "
+        "-UserId \"$env:USERDOMAIN\\$env:USERNAME\" -RunLevel Highest "
+        "-LogonType Interactive",
+        "Register-ScheduledTask -TaskName 'DeskGadgetSensors' -Action $action "
+        "-Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null",
+        "Start-ScheduledTask -TaskName 'DeskGadgetSensors'",
+    ]
+    script_path = Path(tempfile.gettempdir()) / "deskgadget-sensors-setup.ps1"
+    try:
+        script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
+        launcher = (
+            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
+            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
+            "-Verb RunAs -Wait -WindowStyle Hidden"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    finally:
+        try:
+            script_path.unlink()
+        except OSError:
+            pass
+    if _task_exists():
+        print("  CPU temperature helper registered")
+    else:
+        print("  CPU temperature helper skipped - enable it from the System page")
+
+
 def main() -> None:
     print()
     print("  DeskGadget setup")
@@ -313,6 +378,7 @@ def main() -> None:
 
     register_virtual_camera(target)
     install_virtual_cable(target)
+    register_sensor_task(target)
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
     if desktop.exists():

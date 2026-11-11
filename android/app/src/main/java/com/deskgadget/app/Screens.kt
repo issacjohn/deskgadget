@@ -2181,20 +2181,19 @@ private fun PageBody(
     // Only the System page is dense enough to need scaling; every other page
     // keeps its natural size and scrolls if it has to.
     if (page.id == "system") {
-        AutoFit(Modifier.fillMaxSize()) {
-            BlocksColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = if (compact) 6.dp else 20.dp)
-                    .padding(top = if (compact) 2.dp else 8.dp, bottom = 8.dp),
-                blocks = blocks,
-                module = page.id,
-                accent = accent,
-                endpoint = endpoint,
-                compact = compact,
-                onAction = onAction,
-            )
-        }
+        BlocksColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = if (compact) 6.dp else 20.dp)
+                .padding(top = if (compact) 2.dp else 8.dp, bottom = if (compact) 16.dp else 18.dp),
+            blocks = blocks,
+            module = page.id,
+            accent = accent,
+            endpoint = endpoint,
+            compact = compact,
+            merged = true,
+            onAction = onAction,
+        )
         return
     }
 
@@ -2251,9 +2250,61 @@ private fun BlocksColumn(
     accent: Color,
     endpoint: String,
     compact: Boolean,
+    merged: Boolean = false,
     onAction: (String, String, JSONObject?) -> Unit,
 ) {
     BoxWithConstraints(modifier) {
+    if (merged) {
+        val columns = blocks.groupBy { it.optInt("col", 0) }.toSortedMap().values.toList()
+        GlassPanel(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(0.dp),
+            fillContent = true,
+        ) {
+            CompositionLocalProvider(LocalBareCards provides true) {
+                Row(Modifier.fillMaxSize()) {
+                    columns.forEachIndexed { index, column ->
+                        if (index > 0) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .width(1.dp)
+                                    .background(Color(0x16FFFFFF))
+                            )
+                        }
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp),
+                        ) {
+                            column.forEachIndexed { i, block ->
+                                if (i > 0) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(Color(0x10FFFFFF))
+                                    )
+                                }
+                                BlockView(
+                                    block = block,
+                                    module = module,
+                                    accent = accent,
+                                    endpoint = endpoint,
+                                    onAction = { action, payload ->
+                                        onAction(module, action, payload)
+                                    },
+                                    modifier = Modifier.weight(consoleWeight(block)),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return@BoxWithConstraints
+    }
     val threeUp = compact && maxWidth >= 700.dp && blocks.size >= 6
     Column(Modifier.fillMaxWidth()) {
         if (compact && blocks.any { it.has("col") }) {
@@ -2334,6 +2385,20 @@ private fun BlocksColumn(
         }
     }
     }
+}
+
+/**
+ * Relative height each card takes inside the fused System console. The cards
+ * share the panel instead of stacking at their natural size, which is what
+ * keeps the screen full at every phone and tablet height.
+ */
+private fun consoleWeight(block: JSONObject): Float = when (block.optString("type")) {
+    "controls" -> 1f
+    "kv" -> 0.96f
+    "cpu" -> 0.95f
+    "storage" -> 1f
+    "gpu" -> 1f
+    else -> 1f
 }
 
 /**

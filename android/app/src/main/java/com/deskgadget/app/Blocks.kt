@@ -73,6 +73,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,6 +90,7 @@ import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
@@ -182,14 +184,16 @@ fun BlockView(
         "gauges" -> GaugeCard(block, accent, modifier)
         "sparkline" -> SparkCard(block, accent, modifier)
         "meters" -> MetersCard(block, accent, modifier)
-        "thermals" -> ThermalCard(block, accent, modifier)
+        "cpu" -> CpuCard(block, accent, modifier) { onAction("cpu_sensor", null) }
+        "storage" -> StorageCard(block, accent, modifier)
+        "gpu", "thermals" -> GpuCard(block, accent, modifier)
         "kv" -> KvCard(block, modifier)
         "list" -> ListCard(block, accent, endpoint, modifier) { action, payload -> onAction(action, payload) }
         "news" -> NewsBlock(block, accent) { action, payload -> onAction(action, payload) }
         "toggles" -> TogglesCard(block, accent) { id ->
             onAction(block.str("action", "mic_toggle"), JSONObject().put("id", id))
         }
-        "controls" -> ControlsCard(block, accent) { id -> onAction(id, null) }
+        "controls" -> ControlsCard(block, accent, modifier) { id -> onAction(id, null) }
         "slider" -> SliderCard(block, accent) { id, value ->
             onAction(id, JSONObject().put("value", value))
         }
@@ -494,45 +498,351 @@ private fun MetersCard(block: JSONObject, accent: Color, modifier: Modifier) {
     }
 }
 
-/* ----------------------------- thermals ----------------------------- */
+/* --------------------------- cpu / memory / gpu --------------------------- */
 
 @Composable
-private fun ThermalCard(block: JSONObject, accent: Color, modifier: Modifier) {
+private fun CpuCard(
+    block: JSONObject,
+    accent: Color,
+    modifier: Modifier,
+    onEnableSensor: () -> Unit,
+) {
     val compact = LocalCompactLayout.current
-    GlassPanel(modifier.fillMaxWidth()) {
-        Text(
-            "THERMALS",
-            color = Muted,
-            fontSize = 10.sp,
-            letterSpacing = 2.sp,
-        )
-        Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            ThermalStat(
-                label = "CPU",
-                value = thermalValue(block, "cpu"),
-                sub = block.str("cpu_name"),
-                modifier = Modifier.weight(1f),
-                compact = compact,
-            )
-            ThermalStat(
-                label = "GPU",
-                value = thermalValue(block, "gpu"),
-                sub = block.str("gpu_name"),
-                modifier = Modifier.weight(1f),
-                compact = compact,
+    val bare = LocalBareCards.current
+    val value = block.num("value", 0.0).toInt()
+    val temp = thermalValue(block, "temp")
+    val points = block.arr("points")
+    val minV = block.num("min", 0.0)
+    val maxV = block.num("max", 100.0)
+    val values = ArrayList<Float>(points.length())
+    for (i in 0 until points.length()) values.add(points.getDouble(i).toFloat())
+
+    GlassPanel(if (bare) modifier.fillMaxSize() else modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("CPU", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${block.optInt("threads", 0)} THREADS",
+                color = Faint,
+                fontSize = 7.5.sp,
+                letterSpacing = 1.1.sp,
             )
         }
+        Spacer(Modifier.height(if (compact) 6.dp else 12.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("UTILIZATION", color = Muted, fontSize = 8.5.sp, letterSpacing = 1.2.sp)
+                Text(
+                    "$value%",
+                    color = Ink,
+                    fontSize = if (compact) 22.sp else 32.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text("THERMAL", color = Muted, fontSize = 8.5.sp, letterSpacing = 1.2.sp)
+                Text(
+                    if (temp == null) "—" else "${temp.toInt()}°C",
+                    color = if (temp == null) Faint else thermalColor(temp),
+                    fontSize = if (compact) 22.sp else 32.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (temp == null) {
+                    Text(
+                        "ENABLE",
+                        color = accent,
+                        fontSize = 8.sp,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(accent.copy(alpha = 0.16f))
+                            .clickableNoRipple(onEnableSensor)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                } else {
+                    Text(
+                        block.str("temp_name").ifBlank { "sensor" },
+                        color = Faint,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+        val chart = if (bare) {
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .heightIn(min = 34.dp)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+        }
+        Canvas(chart) {
+            if (values.size < 2) return@Canvas
+            val range = (maxV - minV).toFloat().coerceAtLeast(0.001f)
+            val stepX = size.width / (values.size - 1)
+            val path = Path()
+            val fill = Path()
+            values.forEachIndexed { i, v ->
+                val x = i * stepX
+                val y = size.height - ((v - minV.toFloat()) / range).coerceIn(0f, 1f) * size.height
+                if (i == 0) {
+                    path.moveTo(x, y)
+                    fill.moveTo(x, size.height)
+                    fill.lineTo(x, y)
+                } else {
+                    path.lineTo(x, y)
+                    fill.lineTo(x, y)
+                }
+            }
+            fill.lineTo(size.width, size.height)
+            fill.close()
+            drawPath(
+                fill,
+                Brush.verticalGradient(
+                    listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.02f))
+                ),
+            )
+            drawPath(
+                path,
+                brush = Brush.horizontalGradient(listOf(accent.copy(alpha = 0.5f), accent)),
+                style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round),
+            )
+            val tipY = size.height - (((values.lastOrNull() ?: 0f) - minV.toFloat()) / range)
+                .coerceIn(0f, 1f) * size.height
+            drawCircle(accent, radius = 3.dp.toPx(), center = Offset(size.width, tipY))
+        }
+    }
+}
+
+@Composable
+private fun StorageCard(block: JSONObject, accent: Color, modifier: Modifier) {
+    val compact = LocalCompactLayout.current
+    val bare = LocalBareCards.current
+    val items = block.arr("items")
+
+    GlassPanel(if (bare) modifier.fillMaxSize() else modifier.fillMaxWidth()) {
+        Text("CAPACITY", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+        Spacer(Modifier.height(if (compact) 2.dp else 12.dp))
+        Column(
+            if (bare) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth(),
+            verticalArrangement = if (bare) {
+                Arrangement.SpaceEvenly
+            } else {
+                Arrangement.spacedBy(16.dp)
+            },
+        ) {
+            for (i in 0 until items.length()) {
+                CapacityRow(items.getJSONObject(i), accent, compact)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapacityRow(item: JSONObject, accent: Color, compact: Boolean) {
+    val pct = item.num("value").toInt()
+    val frac = (pct / 100f).coerceIn(0f, 1f)
+    val tint = if (pct >= 90) Color(0xFFFFC96B) else accent
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Text(
+                item.str("label").uppercase(),
+                color = Muted,
+                fontSize = 8.5.sp,
+                letterSpacing = 1.6.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "$pct%",
+                color = Ink,
+                fontSize = if (compact) 17.sp else 21.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(if (compact) 9.dp else 11.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0x16FFFFFF)),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(frac)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(tint.copy(alpha = 0.45f), tint)
+                        )
+                    ),
+            )
+            Canvas(Modifier.matchParentSize()) {
+                for (i in 1..3) {
+                    val x = size.width * i / 4f
+                    drawLine(
+                        Color(0x66000000),
+                        Offset(x, 0f),
+                        Offset(x, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(2.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "${item.str("used")} of ${item.str("total")}",
+                color = Faint,
+                fontSize = 8.sp,
+            )
+            Text("${item.str("free")} free", color = Faint, fontSize = 8.sp)
+        }
+    }
+}
+
+@Composable
+private fun GpuCard(block: JSONObject, accent: Color, modifier: Modifier) {
+    val compact = LocalCompactLayout.current
+    val bare = LocalBareCards.current
+    val temp = thermalValue(block, "temp")
+    val name = block.str("name").ifBlank { "GPU" }
+    val tint = temp?.let { thermalColor(it) } ?: Faint
+    val net = block.arr("net")
+
+    GlassPanel(if (bare) modifier.fillMaxSize() else modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("GPU", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.weight(1f))
+            Text("THERMAL", color = Faint, fontSize = 7.5.sp, letterSpacing = 1.1.sp)
+        }
+        Spacer(Modifier.height(if (compact) 6.dp else 12.dp))
+        Text(
+            if (temp == null) "—" else "${temp.toInt()}°",
+            color = tint,
+            fontSize = if (compact) 34.sp else 44.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            name.uppercase(),
+            color = Faint,
+            fontSize = 8.sp,
+            letterSpacing = 0.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(10.dp))
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+        ) {
+            val radius = size.height / 2f
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF5BE49B),
+                        Color(0xFF5BE49B),
+                        Color(0xFFFFC96B),
+                        Color(0xFFFF8CA8),
+                    )
+                ),
+                size = Size(size.width, size.height),
+                cornerRadius = CornerRadius(radius, radius),
+            )
+            if (temp != null) {
+                val x = (size.width * (temp / 100f))
+                    .coerceIn(size.height, size.width - size.height)
+                drawCircle(
+                    Color(0xFF0A0C10),
+                    radius = size.height * 0.62f,
+                    center = Offset(x, radius),
+                )
+                drawCircle(
+                    Color.White,
+                    radius = size.height * 0.36f,
+                    center = Offset(x, radius),
+                )
+            }
+        }
+        Spacer(Modifier.height(5.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("0", color = Faint, fontSize = 7.5.sp)
+            Text("60", color = Faint, fontSize = 7.5.sp)
+            Text("80", color = Faint, fontSize = 7.5.sp)
+            Text("100°C", color = Faint, fontSize = 7.5.sp)
+        }
+        val hot = thermalValue(block, "hot")
+        val memory = thermalValue(block, "memory")
+        if (hot != null || memory != null) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                if (hot != null) MiniThermal("HOT SPOT", hot)
+                if (memory != null) MiniThermal("MEMORY", memory)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        if (net.length() > 0) {
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0x12FFFFFF))
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                for (i in 0 until net.length()) {
+                    val item = net.getJSONObject(i)
+                    Column {
+                        Text(
+                            item.str("label").uppercase(),
+                            color = Muted,
+                            fontSize = 7.5.sp,
+                            letterSpacing = 1.1.sp,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            item.str("value"),
+                            color = Ink,
+                            fontSize = if (compact) 13.sp else 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniThermal(label: String, value: Float) {
+    Column {
+        Text(label, color = Muted, fontSize = 7.5.sp, letterSpacing = 1.1.sp)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "${value.toInt()}°C",
+            color = thermalColor(value),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
 private fun thermalValue(block: JSONObject, key: String): Float? {
     if (!block.has(key) || block.isNull(key)) return null
     val value = block.optDouble(key, Double.NaN)
-    return if (value.isNaN()) null else value.toFloat().coerceIn(0f, 100f)
+    return if (value.isNaN()) null else value.toFloat().coerceIn(0f, 120f)
 }
 
 private fun thermalColor(value: Float): Color = when {
@@ -541,56 +851,7 @@ private fun thermalColor(value: Float): Color = when {
     else -> Color(0xFFFF8CA8)
 }
 
-@Composable
-private fun ThermalStat(
-    label: String,
-    value: Float?,
-    sub: String,
-    modifier: Modifier = Modifier,
-    compact: Boolean,
-) {
-    val tint = value?.let { thermalColor(it) } ?: Faint
-    Column(modifier) {
-        Text(
-            label,
-            color = Muted,
-            fontSize = 8.5.sp,
-            letterSpacing = 1.3.sp,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            if (value == null) "—" else "${value.toInt()}°C",
-            color = if (value == null) Faint else Ink,
-            fontSize = if (compact) 21.sp else 25.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            sub.ifBlank { if (value == null) "unavailable" else "sensor" },
-            color = Faint,
-            fontSize = 9.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(7.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0x1FFFFFFF)),
-        ) {
-            if (value != null) {
-                Box(
-                    Modifier
-                        .fillMaxWidth((value / 100f).coerceIn(0.02f, 1f))
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(tint),
-                )
-            }
-        }
-    }
-}
+
 
 @Composable
 private fun ProgressTrack(fraction: Float, accent: Color) {
@@ -643,13 +904,14 @@ private fun KvItem(item: JSONObject, modifier: Modifier) {
 private fun KvCard(block: JSONObject, modifier: Modifier) {
     val items = block.arr("items")
     val perRow = if (items.length() > 3) 2 else items.length().coerceAtLeast(1)
+    val bare = LocalBareCards.current
     GlassPanel(
-        modifier.fillMaxWidth(),
+        if (bare) modifier.fillMaxSize() else modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            if (bare) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+            verticalArrangement = if (bare) Arrangement.SpaceBetween else Arrangement.spacedBy(12.dp),
         ) {
             var index = 0
             while (index < items.length()) {
@@ -886,16 +1148,95 @@ private fun ListRow(
 /* ----------------------------- controls ----------------------------- */
 
 @Composable
-private fun ControlsCard(block: JSONObject, accent: Color, onPress: (String) -> Unit) {
+private fun ActionTile(
+    item: JSONObject,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onPress: (String) -> Unit,
+) {
+    val id = item.str("id")
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val flash = rememberTapFlash(pressed)
+    Column(
+        modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (flash) accent.copy(alpha = 0.30f) else Color(0x14FFFFFF))
+            .clickable(interactionSource = interaction, indication = null) { onPress(id) }
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = iconFor(item.str("icon")),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            item.str("label"),
+            color = Ink,
+            fontSize = 10.5.sp,
+            maxLines = 2,
+            lineHeight = 12.sp,
+            textAlign = TextAlign.Center,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ControlsCard(
+    block: JSONObject,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onPress: (String) -> Unit,
+) {
     val items = block.arr("items")
     val transport = block.str("style") == "transport"
     val stack = block.str("style") == "stack"
+    val bare = LocalBareCards.current
     GlassPanel(
-        Modifier.fillMaxWidth(),
+        if (bare) modifier.fillMaxSize() else modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = if (transport) 20.dp else 16.dp),
     ) {
+        if (block.str("style") == "grid") {
+            val rows = (items.length() + 1) / 2
+            Column(
+                if (bare) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                for (row in 0 until rows) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .then(if (bare) Modifier.weight(1f) else Modifier.height(46.dp)),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        for (slot in 0 until 2) {
+                            val index = row * 2 + slot
+                            if (index < items.length()) {
+                                ActionTile(
+                                    items.getJSONObject(index),
+                                    accent,
+                                    Modifier.weight(1f),
+                                ) { onPress(it) }
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+            return@GlassPanel
+        }
         if (stack) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                if (bare) Modifier.fillMaxSize() else Modifier,
+                verticalArrangement = if (bare) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp),
+            ) {
                 for (i in 0 until items.length()) {
                     val item = items.getJSONObject(i)
                     val id = item.str("id")
@@ -968,6 +1309,7 @@ private fun iconFor(name: String): ImageVector = when (name) {
     "volume_down" -> Icons.Rounded.VolumeDown
     "mute" -> Icons.Rounded.VolumeOff
     "lock" -> Icons.Rounded.Lock
+    "thermo" -> Icons.Rounded.Thermostat
     "screen_off" -> Icons.Rounded.PowerSettingsNew
     "power" -> Icons.Rounded.PowerSettingsNew
     "desktop" -> Icons.Rounded.DesktopWindows
