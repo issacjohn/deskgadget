@@ -250,6 +250,79 @@ def install_virtual_cable(target: Path) -> None:
         print("  virtual audio cable installed - restart Windows to finish it")
 
 
+PAWNIO_URL = (
+    "https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe"
+)
+
+
+def _pawnio_installed() -> bool:
+    import winreg
+
+    try:
+        winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\PawnIO"
+        ).Close()
+        return True
+    except OSError:
+        return False
+
+
+def ensure_pawnio() -> None:
+    """Install PawnIO, the signed driver CPU temperatures are read through.
+
+    LibreHardwareMonitor 0.9.x reaches the CPU's MSRs via PawnIO instead of the
+    blocklisted WinRing0 driver. The official signed installer is downloaded
+    from its release page, its signature is checked, and Windows asks once.
+    """
+    if _pawnio_installed():
+        print("  temperature driver already installed")
+        return
+    print("  installing PawnIO (pawnio.eu) for CPU temperatures")
+    import urllib.request
+
+    target = Path(tempfile.gettempdir()) / "PawnIO_setup.exe"
+    try:
+        if not target.exists() or target.stat().st_size < 1_000_000:
+            urllib.request.urlretrieve(PAWNIO_URL, target)
+    except Exception:
+        print("  could not download PawnIO - enable it from the System page instead")
+        return
+
+    print("  in the PawnIO window click Install, then close it to continue")
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        f"$exe = '{target}'",
+        "$sig = Get-AuthenticodeSignature $exe",
+        "if ($sig.Status -ne 'Valid' -or "
+        "$sig.SignerCertificate.Subject -notmatch 'namazso') "
+        "{ throw 'PawnIO signature check failed' }",
+        "Start-Process -FilePath $exe -Wait",
+    ]
+    script_path = Path(tempfile.gettempdir()) / "deskgadget-pawnio.ps1"
+    try:
+        script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
+        launcher = (
+            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
+            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
+            "-Verb RunAs -Wait -WindowStyle Hidden"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    finally:
+        try:
+            script_path.unlink()
+        except OSError:
+            pass
+
+    if _pawnio_installed():
+        print("  temperature driver installed")
+    else:
+        print("  temperature driver not installed - enable it from the System page")
+
+
 def _task_exists(name: str = "DeskGadgetSensors") -> bool:
     try:
         result = subprocess.run(
@@ -378,6 +451,7 @@ def main() -> None:
 
     register_virtual_camera(target)
     install_virtual_cable(target)
+    ensure_pawnio()
     register_sensor_task(target)
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"

@@ -16,6 +16,10 @@ from pathlib import Path
 import psutil
 import requests
 
+PAWNIO_URL = (
+    "https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe"
+)
+
 from core.base import Module as BaseModule
 from core.netutil import lan_ip
 
@@ -163,34 +167,69 @@ class Module(BaseModule):
         except Exception:
             self._sensor_proc = None
 
-    def _install_sensor_task(self) -> bool:
-        """Register a per-user task at highest rights; it needs no further UAC."""
+    def _pawnio_installed(self) -> bool:
+        try:
+            import winreg
+
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Services\PawnIO",
+            )
+            key.Close()
+            return True
+        except OSError:
+            return False
+
+    def _download_pawnio(self) -> Path | None:
+        target = Path(os.environ.get("TEMP", ".")) / "PawnIO_setup.exe"
+        try:
+            if target.exists() and target.stat().st_size > 1_000_000:
+                return target
+            response = requests.get(PAWNIO_URL, timeout=60)
+            response.raise_for_status()
+            target.write_bytes(response.content)
+            return target if target.stat().st_size > 1_000_000 else None
+        except Exception:
+            return None
+
+    def _sensor_setup_script(self, pawnio: str) -> str:
         if getattr(sys, "frozen", False):
             command = f'"{sys.executable}" --sensors'
         else:
             launcher = Path(__file__).resolve().parents[3] / "packaging" / "launcher.py"
             command = f'"{sys.executable}" "{launcher}" --sensors'
-        lines = [
-            "$ErrorActionPreference = 'Stop'",
-            f"$command = '{command}'",
-            "$action = New-ScheduledTaskAction -Execute 'cmd.exe' "
-            "-Argument ('/c start \"\" /min ' + $command)",
-            "$trigger = New-ScheduledTaskTrigger -AtLogOn "
-            "-User \"$env:USERDOMAIN\\$env:USERNAME\"",
-            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
-            "-DontStopIfGoingOnBatteries -StartWhenAvailable "
-            "-ExecutionTimeLimit ([TimeSpan]::Zero)",
-            "$principal = New-ScheduledTaskPrincipal "
-            "-UserId \"$env:USERDOMAIN\\$env:USERNAME\" -RunLevel Highest "
-            "-LogonType Interactive",
-            "Register-ScheduledTask -TaskName 'DeskGadgetSensors' -Action $action "
-            "-Trigger $trigger -Settings $settings -Principal $principal -Force "
-            "| Out-Null",
-            "Start-ScheduledTask -TaskName 'DeskGadgetSensors'",
-        ]
+        return f"""
+$ErrorActionPreference = 'Stop'
+$pawnio = '{pawnio}'
+$command = '{command}'
+if ($pawnio) {{
+  $sig = Get-AuthenticodeSignature $pawnio
+  if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'namazso') {{ throw 'PawnIO signature check failed' }}
+  Start-Process -FilePath $pawnio -Wait
+}}
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c start "" /min ' + $command)
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\\$env:USERNAME"
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\\$env:USERNAME" -RunLevel Highest -LogonType Interactive
+Get-CimInstance Win32_Process -Filter "Name='DeskGadget.exe'" | Where-Object {{ $_.CommandLine -match '--sensors' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
+Start-Sleep -Seconds 2
+Register-ScheduledTask -TaskName 'DeskGadgetSensors' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+Start-ScheduledTask -TaskName 'DeskGadgetSensors'
+"""
+
+    def _install_sensor_task(self) -> bool:
+        """Install PawnIO when missing, then (re)start the elevated helper.
+
+        LibreHardwareMonitor reads CPU package temperature through PawnIO, a
+        signed kernel driver by namazso (pawnio.eu). It is downloaded from the
+        official release rather than bundled, its signature is checked, and the
+        official installer is shown so the user approves the driver.
+        """
+        pawnio = "" if self._pawnio_installed() else (self._download_pawnio() or "")
+        script_text = self._sensor_setup_script(pawnio)
         script = Path(os.environ.get("TEMP", ".")) / "deskgadget-sensors.ps1"
         try:
-            script.write_text("\r\n".join(lines), encoding="utf-8-sig")
+            script.write_text(script_text, encoding="utf-8-sig")
             launch = (
                 "Start-Process -FilePath 'powershell.exe' -ArgumentList "
                 f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script}' "
@@ -200,10 +239,10 @@ class Module(BaseModule):
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", launch],
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=360,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-            return result.returncode == 0
+            return result.returncode == 0 and self._pawnio_installed()
         except Exception:
             return False
         finally:

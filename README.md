@@ -233,8 +233,12 @@ DeskGadget is free and open source. If it earned a place on your desk:
   official package; finish its installer and restart Windows, then DeskGadget
   detects the cable. It is **donationware**: if it is useful to you, please
   support the project at <https://vb-audio.com/Cable/>.
-- **LibreHardwareMonitor** (MPL-2.0) — the sensor library behind the CPU/GPU
+- **LibreHardwareMonitor** (MPL-2.0) - the sensor library behind the CPU/GPU
   temperature readings in the System module.
+- **PawnIO** by namazso (<https://pawnio.eu>) - the signed kernel driver
+  LibreHardwareMonitor reads CPU temperatures through. The setup downloads the
+  official installer from its release page, checks the signature, and runs it
+  once.
 
 ## License
 
