@@ -35,10 +35,18 @@ class Module(BaseModule):
                     "action": "seek",
                 }
             )
+        level = None
+        muted = False
+        if media is not None:
+            level = round(float(getattr(media, "volume", 0.0)) * 100)
+            muted = bool(getattr(media, "muted", False))
+
         blocks.append(
             {
                 "type": "controls",
                 "style": "transport",
+                "volume": level,
+                "muted": muted,
                 "items": [
                     {"id": "prev", "icon": "prev", "label": "Previous"},
                     {
