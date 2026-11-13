@@ -29,6 +29,7 @@ class Module(BaseModule):
                     "title": str(now.get("title", "")),
                     "artist": str(now.get("artist") or now.get("album") or ""),
                     "source": str(now.get("source") or ""),
+                    "artwork": str(now.get("artwork") or ""),
                     "position": round(float(now.get("position") or 0), 1),
                     "duration": round(float(now.get("duration") or 0), 1),
                     "playing": playing,
