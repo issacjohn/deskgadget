@@ -1,0 +1,11 @@
+{
+  "id": "media_carthing",
+  "name": "Media for Car Thing",
+  "version": "1.0.0",
+  "author": "DeskGadget",
+  "description": "Now playing and transport for the Car Thing kiosk. Volume and outputs stay on the Media module.",
+  "accent": "#FF7AB6",
+  "interval": 1.0,
+  "default_enabled": false,
+  "settings": {}
+}
