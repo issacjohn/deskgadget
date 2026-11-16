@@ -388,6 +388,47 @@ def register_sensor_task(target: Path) -> None:
         print("  CPU temperature helper skipped - enable it from the System page")
 
 
+def register_startup(exe: Path) -> None:
+    """Start DeskGadget at Windows login, so phones always find the server."""
+    if not exe.exists():
+        return
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        f"$exe = '{exe}'",
+        "$action = New-ScheduledTaskAction -Execute $exe "
+        "-WorkingDirectory (Split-Path $exe)",
+        "$trigger = New-ScheduledTaskTrigger -AtLogOn "
+        "-User \"$env:USERDOMAIN\\$env:USERNAME\"",
+        "$trigger.Delay = 'PT20S'",
+        "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
+        "-DontStopIfGoingOnBatteries -StartWhenAvailable "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew",
+        "$principal = New-ScheduledTaskPrincipal "
+        "-UserId \"$env:USERDOMAIN\\$env:USERNAME\" -LogonType Interactive "
+        "-RunLevel Limited",
+        "Register-ScheduledTask -TaskName 'DeskGadget' -Action $action "
+        "-Trigger $trigger -Settings $settings -Principal $principal -Force "
+        "| Out-Null",
+    ]
+    script_path = Path(tempfile.gettempdir()) / "deskgadget-startup.ps1"
+    try:
+        script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", str(script_path)],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        print("  starts with Windows")
+    except Exception:
+        print("  could not add the startup task")
+    finally:
+        try:
+            script_path.unlink()
+        except OSError:
+            pass
+
+
 def main() -> None:
     print()
     print("  DeskGadget setup")
@@ -465,6 +506,7 @@ def main() -> None:
         make_shortcut(programs / f"{APP}.lnk", exe, target)
 
     print("  shortcuts created")
+    register_startup(exe)
     print("  starting DeskGadget...")
     subprocess.Popen([str(exe)], cwd=str(Path.home()))
     print()
