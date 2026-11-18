@@ -115,6 +115,13 @@ repo. Each module row also has a bin button. Add installs it (downloads
 `plugins_removed/` so it can be added back later. Modules you removed are never
 re-seeded by an upgrade.
 
+## Car Thing
+
+The Spotify Car Thing (Amlogic S905D2, 488 MB, Chromium kiosk) runs the System
+and Media modules as a static web client, not the Android app. It lives in
+[carthing/](carthing/README.md): the client page, the install and boot-logo
+tools, and the notes on its services and A/B slots.
+
 ## Architecture
 
 ```

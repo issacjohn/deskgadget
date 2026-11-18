@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#070A0F">
+<title>DeskGadget · Car Thing</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav id="rail" aria-label="Modules"></nav>
+
+<header id="top">
+  <span id="conn" class="dot" title="server"></span>
+  <span id="server">DeskGadget</span>
+  <span id="clock">--:--</span>
+</header>
+
+<main>
+  <section id="view-system" class="view">
+    <div class="system-grid">
+      <article class="card cpu">
+        <div class="head"><span>CPU</span><span id="cpu-threads" class="sub">—</span></div>
+        <div class="cpu-row">
+          <div class="stat"><span class="k">UTILIZATION</span><b id="cpu-util">—</b></div>
+          <div class="stat"><span class="k">THERMAL</span><b id="cpu-temp">—</b></div>
+        </div>
+        <canvas id="cpu-graph" width="640" height="128"></canvas>
+      </article>
+
+      <article class="card gpu">
+        <div class="head"><span>GPU</span><span class="sub">THERMAL</span></div>
+        <div class="gpu-row">
+          <b id="gpu-temp">—</b>
+          <span id="gpu-name" class="sub">—</span>
+        </div>
+        <div class="band"><i id="gpu-marker"></i></div>
+        <div class="net" id="net"></div>
+      </article>
+
+      <article class="card capacity">
+        <div class="head"><span>CAPACITY</span><span id="power" class="sub">—</span></div>
+        <div id="cap-list"></div>
+      </article>
+
+      <article class="card actions">
+        <div class="head"><span>PC</span><span id="uptime" class="sub">—</span></div>
+        <div class="pc-info">
+          <span>LAN <b id="lan">—</b></span>
+          <span>PUBLIC <b id="pub">—</b></span>
+        </div>
+        <div class="action-row" id="actions"></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="view-media" class="view">
+    <div class="media-grid">
+      <article class="card now">
+        <div class="head"><span>NOW PLAYING</span><span id="m-source" class="sub">—</span></div>
+        <div class="now-body">
+          <div class="now-head">
+            <img id="m-art" alt="" />
+            <div class="now-text">
+              <b id="m-title">Nothing playing</b>
+              <span id="m-artist" class="sub">Start something on the PC</span>
+            </div>
+          </div>
+          <div class="now-foot">
+            <div class="seek" id="m-seek">
+              <div class="seek-track"><i id="m-fill"></i></div>
+              <div class="seek-times"><span id="m-pos">0:00</span><span id="m-dur">0:00</span></div>
+            </div>
+            <div class="transport">
+              <button type="button" class="tbtn" data-action="toggle_mute" aria-label="Mute">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>
+              </button>
+              <button type="button" class="tbtn" data-action="prev" aria-label="Previous">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6v12L9 12z"/><rect x="5" y="6" width="2" height="12" rx="1"/></svg>
+              </button>
+              <button type="button" class="tbtn primary" data-action="play_pause" aria-label="Play or pause">
+                <svg id="m-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
+              </button>
+              <button type="button" class="tbtn" data-action="next" aria-label="Next">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6v12l9-6z"/><rect x="17" y="6" width="2" height="12" rx="1"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card volume">
+        <div class="head"><span>PC VOLUME</span><span class="sub">DESKTOP</span></div>
+        <div class="vol-big" id="vol-val">—</div>
+        <div class="vol-controls">
+          <button type="button" class="vol-step" id="vol-down" aria-label="Volume down">−</button>
+          <div class="vol-slider" id="vol-slider">
+            <div class="vol-track" id="vol-track"><i id="vol-fill"></i><b id="vol-knob"></b></div>
+          </div>
+          <button type="button" class="vol-step" id="vol-up" aria-label="Volume up">+</button>
+        </div>
+      </article>
+
+      <article class="card endpoints">
+        <div class="head"><span>OUTPUTS</span><span class="sub">tap to mute</span></div>
+        <div class="chips" id="outputs"></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="view-news" class="view">
+    <article class="card news-card">
+      <div class="head"><span>NEWS</span><span id="news-topic" class="sub"></span></div>
+      <div class="news-list" id="news-list"></div>
+    </article>
+  </section>
+
+  <section id="view-weather" class="view">
+    <div class="wx-grid">
+      <article class="card wx-now">
+        <div class="head"><span>NOW</span><span id="wx-place" class="sub"></span></div>
+        <div class="wx-temp"><b id="wx-value">—</b><i id="wx-unit"></i></div>
+        <div class="wx-sub" id="wx-sub"></div>
+        <div class="wx-stats" id="wx-stats"></div>
+      </article>
+      <article class="card wx-week">
+        <div class="head"><span>THIS WEEK</span><span class="sub">high / low</span></div>
+        <div class="wx-days" id="wx-days"></div>
+      </article>
+      <article class="card wx-hours-card">
+        <div class="head"><span>NEXT HOURS</span></div>
+        <div class="wx-hours" id="wx-hours"></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="view-other" class="view">
+    <div class="other" id="other-body"></div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<div id="vol-pop" hidden>
+  <div class="vol-pop-row">
+    <span id="vol-pop-arrow">↑</span>
+    <b id="vol-pop-val">0%</b>
+  </div>
+  <i><s id="vol-pop-bar"></s></i>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
