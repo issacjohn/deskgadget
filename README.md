@@ -197,6 +197,10 @@ newer build exists it shows the version and that release's changelog, and lets
 you download or dismiss it. **Check for updates** in the support sheet (the
 heart) runs the check on demand.
 
+**Update now** closes every running copy for you — including one started as
+administrator — installs the new build, verifies the executable, and starts it
+again. Windows asks for permission once; `data/` and `plugins/` are kept.
+
 ## Build
 
 ```bash

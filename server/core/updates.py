@@ -8,7 +8,6 @@ update is just "run the new setup".
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 import tempfile
 import threading
@@ -182,7 +181,14 @@ def _worker(url: str, target: Path, total: int) -> None:
                     handle.write(chunk)
                     with _dl_lock:
                         _dl["received"] += len(chunk)
+        size = target.stat().st_size
         with _dl_lock:
+            if _dl["total"] and size != _dl["total"]:
+                _dl.update(
+                    state="error",
+                    error=f"incomplete download ({size} of {_dl['total']} bytes)",
+                )
+                return
             _dl.update(state="ready", path=str(target))
             if not _dl["total"]:
                 _dl["total"] = _dl["received"]
@@ -221,6 +227,62 @@ def download(*, beta: bool = False) -> tuple[bool, str, dict]:
     return True, "Downloading.", progress()
 
 
+def _install_dir() -> Path:
+    """The folder the running app lives in (not PyInstaller's temp dir)."""
+    try:
+        return Path(sys.executable).resolve().parent
+    except OSError:
+        return app_dir()
+
+
+def _launch_installer(path: Path) -> tuple[bool, str]:
+    """Start setup *elevated*.
+
+    An update has to stop every running copy, and a copy started as
+    administrator can only be stopped with administrator rights. Windows shows
+    one consent prompt; everything after that is quiet. `--dir` keeps the
+    install in this user's folder even when another admin's credentials are
+    entered at the prompt.
+    """
+    try:
+        import ctypes
+
+        ole32 = ctypes.windll.ole32
+        # ShellExecuteEx wants COM initialized; this runs on a worker thread.
+        com = ole32.CoInitializeEx(None, 0x2)  # APARTMENTTHREADED
+        try:
+            shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+            shell32.ShellExecuteW.restype = ctypes.c_void_p
+            shell32.ShellExecuteW.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_wchar_p,
+                ctypes.c_wchar_p,
+                ctypes.c_wchar_p,
+                ctypes.c_wchar_p,
+                ctypes.c_int,
+            ]
+            directory = _install_dir()
+            result = shell32.ShellExecuteW(
+                None,
+                "runas",
+                str(path),
+                f'--dir "{directory}"',
+                str(directory),
+                1,  # SW_SHOWNORMAL: the setup window shows the progress
+            )
+            code = int(result or 0)
+            if code > 32:
+                return True, ""
+            if code == 5 or ctypes.get_last_error() == 1223:  # ERROR_CANCELLED
+                return False, "Update cancelled."
+            return False, f"Could not start the installer (error {code})."
+        finally:
+            if com in (0, 1):  # S_OK or S_FALSE
+                ole32.CoUninitialize()
+    except Exception as exc:
+        return False, f"Could not start the installer: {exc}"
+
+
 def apply() -> tuple[bool, str]:
     """Run the downloaded installer; the caller exits the app afterwards."""
     if sys.platform != "win32":
@@ -228,24 +290,14 @@ def apply() -> tuple[bool, str]:
     with _dl_lock:
         ready = _dl["state"] == "ready"
         path = Path(_dl["path"]) if _dl["path"] else None
+        total = int(_dl["total"] or 0)
     if not ready or path is None or not path.exists():
         return False, "The update has not finished downloading yet."
+    if total and path.stat().st_size != total:
+        return False, "The update download is incomplete - download it again."
     if not getattr(sys, "frozen", False):
         return False, "Updates only run in the installed app."
-    try:
-        # The app exits right after this call, so the installer must not inherit
-        # our handles (a closed stdout kills a console build before it starts).
-        flags = 0
-        if sys.platform == "win32":
-            flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(
-            [str(path)],
-            close_fds=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=flags,
-        )
-    except Exception as exc:
-        return False, f"Could not start the installer: {exc}"
+    ok, message = _launch_installer(path)
+    if not ok:
+        return False, message
     return True, "Installing — DeskGadget will restart."

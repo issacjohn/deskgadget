@@ -183,8 +183,12 @@ def main() -> None:
     print("\n=== packaging payload ===")
     BUILD.mkdir(parents=True, exist_ok=True)
     vbcable = ROOT / "packaging" / "vendor" / "vbcable" / "pack"
+    version_file = ROOT / "VERSION"
     with zipfile.ZipFile(PAYLOAD, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(APP_EXE, "DeskGadget.exe")
+        if version_file.exists():
+            # setup prints and verifies this, so a stale exe cannot slip through
+            zf.write(version_file, "VERSION")
         for dll in ("UnityCaptureFilter32.dll", "UnityCaptureFilter64.dll"):
             src = uc_src / dll
             if src.exists():
@@ -199,7 +203,13 @@ def main() -> None:
         "DeskGadget-Setup",
         str(ROOT / "packaging" / "installer.py"),
         "setup",
-        ["--add-data", f"{PAYLOAD}{';'}."],
+        [
+            "--add-data",
+            f"{PAYLOAD}{';'}.",
+            # setup must be able to stop a copy that was started as
+            # administrator and replace the (locked) executable
+            "--uac-admin",
+        ],
     )
 
     print("\nDone:")

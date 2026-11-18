@@ -84,6 +84,13 @@ builds** for pre-releases), and **Update now** downloads `DeskGadget-Setup.exe`
 and hands over to it. The installer keeps `data/` and `plugins/`, so an update is
 just "run the new setup".
 
+Setup runs elevated (it must be able to stop a copy that was started as
+administrator) and closes every running DeskGadget itself. It replaces the exe
+even if Windows still has the old image mapped, verifies the installed
+executable against the payload, then restarts the app as the normal user. If
+setup cannot finish it writes `logs/setup.log` and shows the reason instead of
+closing silently.
+
 Beta Windows installers can be attached to the pre-release with the same
 `--prerelease` flag; stable users keep getting the installer from the latest
 stable release.

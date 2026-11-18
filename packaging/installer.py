@@ -5,12 +5,14 @@ Start Menu shortcuts, then launches the app.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import zipfile
 from pathlib import Path
 
@@ -35,6 +37,259 @@ def force_case(path: Path) -> None:
             tmp.rename(path)
     except OSError:
         pass
+
+
+def install_dir() -> Path:
+    """Where to install: `--dir` from the updater, else %LOCALAPPDATA%\\DeskGadget.
+
+    The updater passes the folder of the running app so an elevated setup can
+    never land in a different profile (for example when Windows asks for
+    another administrator's credentials).
+    """
+    args = sys.argv[1:]
+    for index, arg in enumerate(args):
+        if arg == "--dir" and index + 1 < len(args):
+            return Path(args[index + 1])
+        if arg.startswith("--dir="):
+            return Path(arg.split("=", 1)[1])
+    return local_app_dir()
+
+
+# --------------------------------------------------------------------------- #
+# setup log and failures
+# --------------------------------------------------------------------------- #
+class _Tee:
+    """Write status lines to the console *and* to logs/setup.log."""
+
+    def __init__(self, *streams: object) -> None:
+        self.streams = [stream for stream in streams if stream is not None]
+
+    def write(self, text: str) -> None:
+        for stream in self.streams:
+            try:
+                stream.write(text)  # type: ignore[union-attr]
+                stream.flush()  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+    def flush(self) -> None:
+        for stream in self.streams:
+            try:
+                stream.flush()  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+    def isatty(self) -> bool:
+        return False
+
+
+def start_log() -> None:
+    """Keep a log an update can be diagnosed from after the window closes."""
+    try:
+        folder = local_app_dir() / "logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        handle = open(folder / "setup.log", "a", encoding="utf-8", buffering=1)
+        handle.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} DeskGadget setup ===\n")
+        sys.stdout = _Tee(sys.stdout, handle)  # type: ignore[assignment]
+        sys.stderr = _Tee(sys.stderr, handle)  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
+def fail(message: str) -> None:
+    print(message)
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            f"{message}\n\nSee {local_app_dir() / 'logs' / 'setup.log'} for details.",
+            "DeskGadget setup",
+            0x00000010,  # MB_ICONERROR
+        )
+    except Exception:
+        pass
+
+
+def _is_admin() -> bool:
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _run_ps_script(script_path: Path) -> None:
+    """Run a setup script elevated. When setup already is elevated the script
+    runs directly, so Windows doesn't ask for permission a second time."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if _is_admin():
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", str(script_path)],
+            capture_output=True,
+            creationflags=flags,
+        )
+        return
+    launcher = (
+        "Start-Process -FilePath 'powershell.exe' -ArgumentList "
+        f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
+        "-Verb RunAs -Wait -WindowStyle Hidden"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
+        capture_output=True,
+        creationflags=flags,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# replacing a running app
+# --------------------------------------------------------------------------- #
+def _image_locked(path: Path) -> bool:
+    """True while Windows still has the executable mapped."""
+    if not path.exists():
+        return False
+    try:
+        with path.open("r+b"):
+            return False
+    except OSError:
+        return True
+
+
+def _kill_app() -> None:
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.run(
+        ["taskkill", "/IM", f"{APP}.exe", "/F"],
+        capture_output=True,
+        creationflags=flags,
+    )
+    subprocess.run(
+        [
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            f"Get-Process -Name '{APP}' -ErrorAction SilentlyContinue "
+            "| Stop-Process -Force -ErrorAction SilentlyContinue",
+        ],
+        capture_output=True,
+        creationflags=flags,
+    )
+
+
+def stop_running_app(exe: Path, timeout: float = 20.0) -> None:
+    """Close every copy, including one started as administrator.
+
+    The dashboard starts setup while the app is still running, so waiting for
+    a lock to clear is the normal path, not an error.
+    """
+    if not _image_locked(exe):
+        return
+    print("  closing the running DeskGadget")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        _kill_app()
+        time.sleep(0.6)
+        if not _image_locked(exe):
+            return
+    print("  Windows still has DeskGadget open; moving it aside")
+
+
+def _set_aside(path: Path) -> Path | None:
+    """A running exe cannot be overwritten, but it can be renamed."""
+    stale = path.with_name(f"{path.stem}-{int(time.time())}.old{path.suffix}")
+    try:
+        path.rename(stale)
+        return stale
+    except OSError:
+        return None
+
+
+def _delete_later(path: Path) -> None:
+    try:
+        path.unlink()
+        return
+    except OSError:
+        pass
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.MoveFileExW(str(path), None, 0x4)  # delete on reboot
+    except Exception:
+        pass
+
+
+def remove_stale(target: Path) -> None:
+    for pattern in (f"{APP}-*.old.exe", "*.case-tmp"):
+        for path in target.glob(pattern):
+            _delete_later(path)
+
+
+def _sha256_zip(zf: zipfile.ZipFile, name: str) -> str:
+    digest = hashlib.sha256()
+    with zf.open(name) as src:
+        for chunk in iter(lambda: src.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_entry(zf: zipfile.ZipFile, item: zipfile.ZipInfo, target: Path) -> None:
+    dest = target / item.filename
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with zf.open(item) as src, open(dest, "wb") as out:
+        shutil.copyfileobj(src, out, 1 << 20)
+    try:
+        stamp = time.mktime(tuple(item.date_time) + (0, 0, -1))
+        os.utime(dest, (stamp, stamp))
+    except (OSError, OverflowError):
+        pass
+
+
+def _replace_exe(zf: zipfile.ZipFile, item: zipfile.ZipInfo, target: Path) -> None:
+    for _ in range(4):
+        try:
+            _write_entry(zf, item, target)
+            return
+        except OSError:
+            stale = _set_aside(target / item.filename)
+            if stale is not None:
+                _delete_later(stale)
+                time.sleep(0.4)
+                continue
+            time.sleep(1.0)
+    raise RuntimeError(
+        "Windows would not let setup replace DeskGadget.exe. "
+        "Close DeskGadget and run setup again."
+    )
+
+
+def extract_payload(zf: zipfile.ZipFile, target: Path) -> str:
+    """Write the payload, always replacing the exe; returns its sha256."""
+    exe_name = f"{APP}.exe"
+    exe_item = next((item for item in zf.infolist() if item.filename == exe_name), None)
+    if exe_item is None:
+        raise RuntimeError("the update payload has no DeskGadget.exe")
+    expected = _sha256_zip(zf, exe_name)
+
+    _replace_exe(zf, exe_item, target)
+
+    for item in zf.infolist():
+        if item is exe_item:
+            continue
+        try:
+            _write_entry(zf, item, target)
+        except OSError:
+            # the filter DLLs are often loaded by a running app or explorer;
+            # never let a locked file abort the upgrade
+            print(f"  kept the installed {Path(item.filename).name} (in use)")
+    return expected
 
 
 def drop_old_shortcut(link: Path) -> None:
@@ -168,16 +423,7 @@ def register_virtual_camera(target: Path) -> None:
     script_path = Path(tempfile.gettempdir()) / "deskgadget-vcam-setup.ps1"
     try:
         script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
-        launcher = (
-            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
-            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
-            "-Verb RunAs -Wait -WindowStyle Hidden"
-        )
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
-            capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        _run_ps_script(script_path)
     finally:
         try:
             script_path.unlink()
@@ -235,15 +481,22 @@ def install_virtual_cable(target: Path) -> None:
 
     print("  installing the virtual audio cable")
     print("  in the VB-CABLE window click Install, then close it to continue")
-    script = (
-        "$p = Start-Process -FilePath '{exe}' -WorkingDirectory '{folder}' "
-        "-Verb RunAs -PassThru -Wait; exit $p.ExitCode"
-    ).format(exe=setup, folder=setup.parent)
-    subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    if _is_admin():
+        subprocess.run(
+            [str(setup)],
+            cwd=str(setup.parent),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    else:
+        script = (
+            "$p = Start-Process -FilePath '{exe}' -WorkingDirectory '{folder}' "
+            "-Verb RunAs -PassThru -Wait; exit $p.ExitCode"
+        ).format(exe=setup, folder=setup.parent)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
     if _has_virtual_cable():
         print("  virtual audio cable ready - the phone can appear as a microphone")
     else:
@@ -301,16 +554,7 @@ def ensure_pawnio() -> None:
     script_path = Path(tempfile.gettempdir()) / "deskgadget-pawnio.ps1"
     try:
         script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
-        launcher = (
-            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
-            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
-            "-Verb RunAs -Wait -WindowStyle Hidden"
-        )
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
-            capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        _run_ps_script(script_path)
     finally:
         try:
             script_path.unlink()
@@ -367,16 +611,7 @@ def register_sensor_task(target: Path) -> None:
     script_path = Path(tempfile.gettempdir()) / "deskgadget-sensors-setup.ps1"
     try:
         script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
-        launcher = (
-            "Start-Process -FilePath 'powershell.exe' -ArgumentList "
-            f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{script_path}' "
-            "-Verb RunAs -Wait -WindowStyle Hidden"
-        )
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
-            capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        _run_ps_script(script_path)
     finally:
         try:
             script_path.unlink()
@@ -429,22 +664,21 @@ def register_startup(exe: Path) -> None:
             pass
 
 
-def main() -> None:
+def install() -> bool:
+    target = install_dir()
     print()
     print("  DeskGadget setup")
     print("  ------------------------------------")
 
-    # stop a running copy so the executable can be replaced
-    subprocess.run(
-        ["taskkill", "/IM", f"{APP}.exe", "/F"],
-        capture_output=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    time.sleep(0.8)
-
-    target = local_app_dir()
     target.mkdir(parents=True, exist_ok=True)
     force_case(target)
+    exe = target / f"{APP}.exe"
+
+    # Close every copy before touching the files. The dashboard update path
+    # runs setup while the old app is still alive, and a copy started as
+    # administrator can only be stopped by an elevated setup.
+    stop_running_app(exe)
+    remove_stale(target)
 
     # keep the user's devices, settings and custom modules across upgrades
     keep: dict[str, Path] = {}
@@ -459,41 +693,39 @@ def main() -> None:
     payload = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "payload.zip"
     if not payload.exists():
         print("  payload missing - build the app first")
-        input("  press enter to close")
-        return
+        return False
 
-    with zipfile.ZipFile(payload) as zf:
-        # the filter DLLs are often loaded by a running app; never let a locked
-        # file abort the upgrade
-        for item in zf.infolist():
-            if item.filename.lower().startswith("unitycapture/"):
-                continue
-            zf.extract(item, target)
-        for item in zf.infolist():
-            if not item.filename.lower().startswith("unitycapture/"):
-                continue
-            dst = target / item.filename
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                with zf.open(item) as src, open(dst, "wb") as out:
-                    shutil.copyfileobj(src, out)
-            except OSError:
-                print(f"  kept the installed {Path(item.filename).name} (in use)")
+    try:
+        with zipfile.ZipFile(payload) as zf:
+            expected = extract_payload(zf, target)
+    finally:
+        for name, stash in keep.items():
+            dst = target / name
+            if stash.exists() and not dst.exists():
+                shutil.move(str(stash), str(dst))
 
-    for name, stash in keep.items():
-        dst = target / name
-        if dst.exists():
-            shutil.rmtree(dst, ignore_errors=True)
-        shutil.move(str(stash), str(dst))
-
-    exe = target / f"{APP}.exe"
     force_case(exe)
-    print(f"  installed to {target}")
+    if not exe.exists() or _sha256_file(exe) != expected:
+        print("  the installed DeskGadget.exe does not match the payload")
+        return False
 
-    register_virtual_camera(target)
-    install_virtual_cable(target)
-    ensure_pawnio()
-    register_sensor_task(target)
+    version = ""
+    try:
+        version = (target / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    print(f"  installed {version or 'DeskGadget'} to {target}")
+
+    for step in (
+        lambda: register_virtual_camera(target),
+        lambda: install_virtual_cable(target),
+        ensure_pawnio,
+        lambda: register_sensor_task(target),
+    ):
+        try:
+            step()
+        except Exception:
+            traceback.print_exc()
 
     desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
     if desktop.exists():
@@ -508,8 +740,31 @@ def main() -> None:
     print("  shortcuts created")
     register_startup(exe)
     print("  starting DeskGadget...")
-    subprocess.Popen([str(exe)], cwd=str(Path.home()))
+    # setup runs elevated, so go through Explorer: the new app must start with
+    # the user's normal token, not as administrator.
+    try:
+        subprocess.Popen(
+            ["explorer.exe", str(exe)],
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        os.startfile(str(exe))  # type: ignore[attr-defined]
     print()
+    return True
+
+
+def main() -> None:
+    start_log()
+    try:
+        ok = install()
+    except Exception:
+        traceback.print_exc()
+        ok = False
+    if not ok:
+        fail("DeskGadget setup could not finish. Close DeskGadget and run setup again.")
 
 
 if __name__ == "__main__":

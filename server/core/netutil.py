@@ -44,7 +44,13 @@ def lan_ips() -> list[str]:
     try:
         import psutil
 
-        for addrs in psutil.net_if_addrs().values():
+        stats = psutil.net_if_stats()
+        for name, addrs in psutil.net_if_addrs().items():
+            state = stats.get(name)
+            if state is not None and not state.isup:
+                # Windows keeps a configured IPv4 address on an unplugged NIC;
+                # advertising it makes phones pick an address that cannot route.
+                continue
             for addr in addrs:
                 if (
                     addr.family == socket.AF_INET
@@ -66,28 +72,63 @@ class Discovery:
         self.name = name
         self._zc = None
         self._info = None
+        self._stop = threading.Event()
+        self.ips: list[str] = []
+
+    def _service_info(self, ips: list[str]):
+        from zeroconf import ServiceInfo
+
+        return ServiceInfo(
+            SERVICE_TYPE,
+            f"{self.name}.{SERVICE_TYPE}",
+            addresses=[socket.inet_aton(ip) for ip in ips],
+            port=self.port,
+            properties={"v": "1", "name": self.name},
+            server=f"{socket.gethostname().lower()}.local.",
+        )
 
     def start(self) -> None:
         try:
-            from zeroconf import ServiceInfo, Zeroconf
+            from zeroconf import Zeroconf
         except Exception:
             log.warning("zeroconf not installed; discovery disabled")
             return
 
         def register() -> None:
             try:
-                ips = lan_ips()
-                self._info = ServiceInfo(
-                    SERVICE_TYPE,
-                    f"{self.name}.{SERVICE_TYPE}",
-                    addresses=[socket.inet_aton(ip) for ip in ips],
-                    port=self.port,
-                    properties={"v": "1", "name": self.name},
-                    server=f"{socket.gethostname().lower()}.local.",
-                )
                 self._zc = Zeroconf()
-                self._zc.register_service(self._info)
-                log.info("mDNS advertising %s on %s:%s", self.name, ", ".join(ips), self.port)
+                # Wi-Fi often comes up after login or resume, and Windows keeps
+                # a configured address on a NIC that is down. Republish whenever
+                # the usable addresses change, and never advertise loopback -
+                # a phone that resolves it can only fail to connect.
+                while not self._stop.is_set():
+                    current = [ip for ip in lan_ips() if not ip.startswith("127.")]
+                    if current and current != self.ips:
+                        info = self._service_info(current)
+                        if self._info is None:
+                            self._zc.register_service(info)
+                            log.info(
+                                "mDNS advertising %s on %s:%s",
+                                self.name,
+                                ", ".join(current),
+                                self.port,
+                            )
+                        else:
+                            self._zc.update_service(info)
+                            log.info(
+                                "mDNS re-advertising %s on %s:%s",
+                                self.name,
+                                ", ".join(current),
+                                self.port,
+                            )
+                        self._info = info
+                        self.ips = current
+                    elif not current and self._info is not None:
+                        self._zc.unregister_service(self._info)
+                        self._info = None
+                        self.ips = []
+                        log.info("mDNS withdrawn: no LAN address yet")
+                    self._stop.wait(10)
             except Exception:
                 log.exception("mDNS registration failed")
 
@@ -95,6 +136,7 @@ class Discovery:
         threading.Thread(target=register, name="mdns", daemon=True).start()
 
     def stop(self) -> None:
+        self._stop.set()
         try:
             if self._zc and self._info:
                 self._zc.unregister_service(self._info)

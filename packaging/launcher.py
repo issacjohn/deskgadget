@@ -774,7 +774,12 @@ def main() -> int:
         log.info("another DeskGadget is running; bringing its window forward")
         if focus_existing_window():
             return 0
-        log.info("no open window to focus; opening one against the running server")
+        # No window to focus (for example the other copy sits in the tray).
+        # Starting a second copy would leave another process holding the exe
+        # and would block the next update, so just open its dashboard.
+        log.info("no window to focus; opening the running dashboard")
+        webbrowser.open(URL)
+        return 0
 
     owned = False
     server = Server()
